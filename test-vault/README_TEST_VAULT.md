@@ -17,7 +17,11 @@
 11. カードタイトルがデフォルトではファイル名のみになり、設定 `Show full path in link cards` を有効にするとフルパス表示へ戻ることを確認する。
 12. `.webp` 画像を含む Markdown 候補を追加または既存候補に追記し、カードプレビューに表示されることを確認する。
 13. separate pane を開いた状態でカード上の Hover Preview / Hover Editor を使っても、メインカラムで選択している `Active.md` の 2-hop 表示から切り替わらないことを確認する。
-14. `FrontmatterLinkCandidate.md` が `RareA` の 2-hop 候補になり、カード検索で `cosense-test-card` に一致することを確認する。
+14. Obsidian 1.4.0 以上で `FrontmatterLinkCandidate.md` が `RareA` の 2-hop
+    候補になり、カード検索で `cosense-test-card` に一致し、クリックで対象ノートが
+    開くことを確認する。frontmatterリンクには公開API上の行位置がないため、特定行への
+    ジャンプは期待しない。Obsidian 1.3.5 ではこのfrontmatter専用リンクの検出は
+    期待しない。
 15. separate pane を有効にして `CanvasActive.canvas` を開き、Canvas 内のファイルノードがリンクとして扱われることを確認する。
 16. `Active.md` の Back Links に `CanvasBacklink.canvas` が現れることを確認する。
 17. `InvalidCanvasNodes.canvas` を開いてもプラグインが停止せず、空の結果として扱われることを確認する。

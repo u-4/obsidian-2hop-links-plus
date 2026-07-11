@@ -14,8 +14,8 @@ interface LinkViewProps {
 }
 
 interface LinkViewState {
-  preview: string;
-  title: string;
+  preview: string | null;
+  title: string | null;
   mouseDown: boolean;
   dragging: boolean;
   touchStart: number;

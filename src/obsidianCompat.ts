@@ -1,6 +1,6 @@
 import {
   CachedMetadata,
-  LinkCache,
+  FrontmatterLinkCache,
   OpenViewState,
   TFile,
   Workspace,
@@ -8,21 +8,10 @@ import {
 } from "obsidian";
 import type { OpenPaneTarget } from "./types";
 
-/**
- * Obsidian exposes frontmatter links at runtime, but older public type
- * definitions do not include the field on CachedMetadata.
- */
-type CachedMetadataWithFrontmatterLinks = CachedMetadata & {
-  frontmatterLinks?: LinkCache[];
-};
-
 export function getFrontmatterLinks(
   cache: CachedMetadata | null | undefined
-): LinkCache[] {
-  return (
-    (cache as CachedMetadataWithFrontmatterLinks | null | undefined)
-      ?.frontmatterLinks ?? []
-  );
+): FrontmatterLinkCache[] {
+  return cache?.frontmatterLinks ?? [];
 }
 
 export type RuntimeWorkspaceLeaf = WorkspaceLeaf & {

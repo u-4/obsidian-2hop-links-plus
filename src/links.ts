@@ -1,4 +1,4 @@
-import { App, CachedMetadata, TFile } from "obsidian";
+import { App, CachedMetadata, normalizePath, TFile } from "obsidian";
 import { FileEntity } from "./model/FileEntity";
 import {
   filePathToLinkText,
@@ -427,7 +427,7 @@ export class Links {
               this.settings.createFilesForMultiLinked
             ) {
               await this.app.vault.create(
-                `${this.app.workspace.getActiveFile().parent.path}/${key}.md`,
+                normalizePath(`${activeFile.parent?.path ?? ""}/${key}.md`),
                 ""
               );
               resolvedLinks.push(new FileEntity(activeFile.path, key));
@@ -630,7 +630,7 @@ export class Links {
                 k
               );
             })
-            .filter((it) => it);
+            .filter((it): it is FileEntity => it !== null);
         }
       }
     }
@@ -872,7 +872,7 @@ export class Links {
 
   async getLinksListOfFilesWithTags(
     activeFile: TFile,
-    activeFileCache: CachedMetadata,
+    activeFileCache: CachedMetadata | null | undefined,
     forwardLinkSet: Set<string>,
     twoHopLinkSet: Set<string>
   ): Promise<PropertiesLinks[]> {
@@ -1082,7 +1082,9 @@ export class Links {
     const propertiesLinksEntities = await Promise.all(
       propertiesLinksEntitiesPromises
     );
-    return propertiesLinksEntities.filter((it) => it != null);
+    return propertiesLinksEntities.filter(
+      (it): it is PropertiesLinks => it !== null
+    );
   }
 
   getTagsFromCache(
@@ -1142,11 +1144,14 @@ export class Links {
 
   async getSortedFileEntities(
     entities: FileEntity[],
-    sourcePathFn: (entity: FileEntity) => string,
+    sourcePathFn: (entity: FileEntity) => string | null,
     sortOrder: SortOrder
   ): Promise<FileEntity[]> {
     const statsPromises = entities.map(async (entity) => {
-      const stat = await this.app.vault.adapter.stat(sourcePathFn(entity));
+      const sourcePath = sourcePathFn(entity);
+      const stat = sourcePath
+        ? await this.app.vault.adapter.stat(sourcePath)
+        : null;
       return { entity, stat };
     });
 

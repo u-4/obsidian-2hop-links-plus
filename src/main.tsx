@@ -25,7 +25,6 @@ import { OpenPaneTarget } from "./types";
 import { isSortOrder } from "./settings/sortOptions";
 import type { SortOrder } from "./settings/sortOptions";
 import {
-  getFrontmatterLinks,
   getRuntimeLeafParts,
   openLinkTextCompat,
   unregisterHoverLinkSourceCompat,
@@ -126,7 +125,7 @@ export default class TwohopLinksPlugin extends Plugin {
     return false;
   }
 
-  async refreshTwohopLinks(leaf?: WorkspaceLeaf): Promise<void> {
+  async refreshTwohopLinks(leaf?: WorkspaceLeaf | null): Promise<void> {
     if (this.shouldIgnoreActiveLeaf(leaf ?? null)) {
       return;
     }
@@ -168,7 +167,6 @@ export default class TwohopLinksPlugin extends Plugin {
     const references = [
       ...(cache.links ?? []),
       ...(cache.embeds ?? []),
-      ...getFrontmatterLinks(cache),
     ]
       .slice()
       .sort(
@@ -321,6 +319,8 @@ export default class TwohopLinksPlugin extends Plugin {
     const leaf = this.settings.panePositionIsRight
       ? this.app.workspace.getRightLeaf(false)
       : this.app.workspace.getLeftLeaf(false);
+    if (!leaf) return;
+
     leaf.setViewState({ type: "TwoHopLinksView" });
     this.app.workspace.revealLeaf(leaf);
   }
@@ -375,8 +375,7 @@ export default class TwohopLinksPlugin extends Plugin {
       return;
     }
     this.addPaddingBottom();
-    const markdownView: MarkdownView =
-      this.app.workspace.getActiveViewOfType(MarkdownView);
+    const markdownView = this.app.workspace.getActiveViewOfType(MarkdownView);
     const activeFile = markdownView?.file;
     if (!activeFile) {
       return;
@@ -491,8 +490,7 @@ export default class TwohopLinksPlugin extends Plugin {
   }
 
   removeTwohopLinks(): void {
-    const markdownView: MarkdownView =
-      this.app.workspace.getActiveViewOfType(MarkdownView);
+    const markdownView = this.app.workspace.getActiveViewOfType(MarkdownView);
 
     if (markdownView !== null) {
       for (const element of this.getContainerElements(markdownView)) {
@@ -532,7 +530,7 @@ export default class TwohopLinksPlugin extends Plugin {
   removePaddingBottom(): void {
     const existingStyleEl = document.getElementById("twohop-custom-padding");
     if (existingStyleEl) {
-      existingStyleEl.parentNode.removeChild(existingStyleEl);
+      existingStyleEl.remove();
     }
   }
 }

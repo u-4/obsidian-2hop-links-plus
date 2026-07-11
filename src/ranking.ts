@@ -254,9 +254,9 @@ function getOutgoingPathsInDocumentOrder(
     ...((cache.links ?? []) as LinkReference[]),
     ...((cache.embeds ?? []) as LinkReference[]),
   ].sort((a, b) => getReferenceOffset(a) - getReferenceOffset(b));
-  const frontmatterReferences = (getFrontmatterLinks(cache) as LinkReference[])
-    .slice()
-    .sort((a, b) => getReferenceOffset(a) - getReferenceOffset(b));
+  // Obsidian's FrontmatterLinkCache has no document position. Preserve the
+  // cache order and append frontmatter links after positioned body links.
+  const frontmatterReferences: LinkReference[] = getFrontmatterLinks(cache);
   const references = bodyReferences.concat(frontmatterReferences);
   const seen = new Set<string>();
   const result: string[] = [];

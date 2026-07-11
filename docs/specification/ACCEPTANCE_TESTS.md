@@ -210,10 +210,15 @@ Expected result:
 
 Frontmatter checks:
 
+These checks require Obsidian 1.4.0 or newer. On the declared minimum version,
+Obsidian 1.3.5, frontmatter-only link discovery is not expected.
+
 - Open `Active.md` and confirm `FrontmatterLinkCandidate.md` appears in the
   `RareA` 2-hop section even though its `[[RareA]]` link is in frontmatter.
 - Search for `cosense-test-card` and confirm that card remains visible.
-- Click the card and confirm the frontmatter link location is opened.
+- Click the card and confirm the target note opens. Obsidian's public
+  frontmatter-link metadata has no line position, so no specific line jump is
+  expected for a link that exists only in frontmatter.
 
 Canvas checks require `Show 2hop links in separate pane`:
 
@@ -221,7 +226,9 @@ Canvas checks require `Show 2hop links in separate pane`:
   are treated as outgoing links and related cards render without an exception.
 - Open `Active.md`; `CanvasBacklink.canvas` appears in Back Links.
 - Open `InvalidCanvasNodes.canvas`; the plugin remains enabled and shows no
-  Canvas-derived results rather than throwing an exception.
+  Canvas-derived results rather than throwing an exception. This fixture covers
+  a non-array `nodes` value; individual malformed nodes are skipped defensively
+  but are not separately covered by the fixture.
 
 When these fixtures are copied into a subfolder of an existing vault, update
 each Canvas node's `file` value to the vault-relative path (for example,

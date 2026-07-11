@@ -8,6 +8,10 @@ deployment paths, and operational records stay outside the repository.
 
 ## Build
 
+Use Node.js 20.17 or newer with npm 11 or newer. CI and release workflows
+currently use Node.js 24. npm 11 is required for the install-script approval
+workflow described below.
+
 ```bash
 npm ci
 npm run build

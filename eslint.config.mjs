@@ -23,6 +23,8 @@ export default tseslint.config(
       },
     },
     rules: {
+      "@typescript-eslint/explicit-module-boundary-types": "error",
+      "@typescript-eslint/no-non-null-assertion": "error",
       "@typescript-eslint/naming-convention": [
         "error",
         {

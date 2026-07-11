@@ -15,6 +15,10 @@
   "allowScripts": {
     "esbuild@0.25.5": true
   },
+  "engines": {
+    "node": ">=20.17.0",
+    "npm": ">=11.0.0"
+  },
   "dependencies": {
     "react": "17.0.1",
     "react-dom": "17.0.1"
