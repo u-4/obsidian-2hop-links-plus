@@ -1,7 +1,11 @@
-import { App, TFile } from "obsidian";
+import type { App, TFile } from "obsidian";
 import { removeBlockReference, shouldExcludePath } from "./utils";
 import { getFrontmatterLinks } from "./obsidianCompat";
 import type { SortOrder } from "./settings/sortOptions";
+import {
+  CooperativeTask,
+  throwIfCalculationCancelled,
+} from "./performance";
 
 export type RankingSortOrder =
   | "relatedScoreDesc"
@@ -34,8 +38,9 @@ export interface RelatedCandidateScore {
   inDegree: number;
 }
 
-interface RankingSettings {
+export interface RankingSettings {
   excludePaths: string[];
+  includePageRank?: boolean;
 }
 
 interface LinkReference {
@@ -60,10 +65,13 @@ export function isRankingSortOrder(
   );
 }
 
-export function buildGraphIndex(
+export async function buildGraphIndex(
   app: App,
-  settings: RankingSettings
-): GraphIndex {
+  settings: RankingSettings,
+  signal?: AbortSignal | null
+): Promise<GraphIndex> {
+  const task = new CooperativeTask(signal);
+  throwIfCalculationCancelled(signal);
   const markdownFiles = app.vault
     .getMarkdownFiles()
     .filter((file) => !shouldExcludePath(file.path, settings.excludePaths));
@@ -79,6 +87,8 @@ export function buildGraphIndex(
     pathSet.add(file.path);
     out.set(file.path, new Set<string>());
     inn.set(file.path, new Set<string>());
+    const pause = task.checkpoint();
+    if (pause) await pause;
   }
 
   const resolvedLinks: Record<string, Record<string, number>> = app
@@ -92,22 +102,9 @@ export function buildGraphIndex(
 
       out.get(source)?.add(dest);
       inn.get(dest)?.add(source);
+      const pause = task.checkpoint();
+      if (pause) await pause;
     }
-  }
-
-  for (const file of markdownFiles) {
-    const orderedPaths = getOutgoingPathsInDocumentOrder(app, file, pathSet);
-    const seen = new Set<string>(orderedPaths);
-
-    for (const path of out.get(file.path) ?? []) {
-      if (!seen.has(path)) {
-        orderedPaths.push(path);
-        seen.add(path);
-      }
-    }
-
-    outOrder.set(file.path, orderedPaths);
-    orderIndex.set(file.path, buildOrderIndex(orderedPaths));
   }
 
   const paths = Array.from(pathSet);
@@ -117,15 +114,24 @@ export function buildGraphIndex(
   for (const path of paths) {
     inDegree.set(path, inn.get(path)?.size ?? 0);
     outDegree.set(path, out.get(path)?.size ?? 0);
+    const pause = task.checkpoint();
+    if (pause) await pause;
   }
 
-  const pageRank = calculateCosensePageRankLikeScores(
-    paths,
-    filesByPath,
-    inn,
-    inDegree,
-    outDegree
-  );
+  const pageRank =
+    settings.includePageRank === false
+      ? new Map<string, number>()
+      : await calculateCosensePageRankLikeScores(
+          paths,
+          filesByPath,
+          inn,
+          inDegree,
+          outDegree,
+          signal,
+          task
+        );
+
+  throwIfCalculationCancelled(signal);
 
   return {
     paths,
@@ -138,6 +144,40 @@ export function buildGraphIndex(
     outDegree,
     pageRank,
   };
+}
+
+export function prepareGraphOrderForPath(
+  app: App,
+  graph: GraphIndex,
+  path: string
+): void {
+  if (graph.outOrder.has(path)) {
+    return;
+  }
+
+  const file = graph.filesByPath.get(path);
+  if (!file) {
+    graph.outOrder.set(path, []);
+    graph.orderIndex.set(path, new Map<string, number>());
+    return;
+  }
+
+  const orderedPaths = getOutgoingPathsInDocumentOrder(
+    app,
+    file,
+    graph.filesByPath
+  );
+  const seen = new Set<string>(orderedPaths);
+
+  for (const outgoingPath of graph.out.get(path) ?? []) {
+    if (!seen.has(outgoingPath)) {
+      orderedPaths.push(outgoingPath);
+      seen.add(outgoingPath);
+    }
+  }
+
+  graph.outOrder.set(path, orderedPaths);
+  graph.orderIndex.set(path, buildOrderIndex(orderedPaths));
 }
 
 export function calculateRelatedScores(
@@ -245,7 +285,7 @@ export function chooseIntermediateForScore(
 function getOutgoingPathsInDocumentOrder(
   app: App,
   file: TFile,
-  pathSet: Set<string>
+  filesByPath: Map<string, TFile>
 ): string[] {
   const cache = app.metadataCache.getFileCache(file);
   if (!cache) return [];
@@ -264,7 +304,7 @@ function getOutgoingPathsInDocumentOrder(
   for (const reference of references) {
     const link = removeBlockReference(reference.link);
     const resolved = app.metadataCache.getFirstLinkpathDest(link, file.path);
-    if (!resolved || !pathSet.has(resolved.path)) continue;
+    if (!resolved || !filesByPath.has(resolved.path)) continue;
     if (seen.has(resolved.path)) continue;
 
     seen.add(resolved.path);
@@ -274,13 +314,15 @@ function getOutgoingPathsInDocumentOrder(
   return result;
 }
 
-function calculateCosensePageRankLikeScores(
+async function calculateCosensePageRankLikeScores(
   paths: string[],
   filesByPath: Map<string, TFile>,
   inn: Map<string, Set<string>>,
   inDegree: Map<string, number>,
-  outDegree: Map<string, number>
-): Map<string, number> {
+  outDegree: Map<string, number>,
+  signal: AbortSignal | null | undefined,
+  task: CooperativeTask
+): Promise<Map<string, number>> {
   const backlinkValues = new Map<string, number>();
   const backlinkAuthorityValues = new Map<string, number>();
   const outlinkValues = new Map<string, number>();
@@ -294,6 +336,8 @@ function calculateCosensePageRankLikeScores(
     let backlinkAuthority = 0;
     for (const sourcePath of inn.get(path) ?? []) {
       backlinkAuthority += Math.log1p(inDegree.get(sourcePath) ?? 0);
+      const pause = task.checkpoint();
+      if (pause) await pause;
     }
     backlinkAuthorityValues.set(path, backlinkAuthority);
 
@@ -302,7 +346,11 @@ function calculateCosensePageRankLikeScores(
       ? Math.max(0, (now - file.stat.mtime) / (1000 * 60 * 60 * 24))
       : 365;
     editValues.set(path, Math.exp(-days / 90));
+    const pause = task.checkpoint();
+    if (pause) await pause;
   }
+
+  throwIfCalculationCancelled(signal);
 
   const normalizedBacklinks = normalizeByP95(backlinkValues);
   const normalizedAuthority = normalizeByP95(backlinkAuthorityValues);
@@ -318,8 +366,11 @@ function calculateCosensePageRankLikeScores(
         0.15 * (normalizedOutlinks.get(path) ?? 0) +
         0.2 * (normalizedEdit.get(path) ?? 0)
     );
+    const pause = task.checkpoint();
+    if (pause) await pause;
   }
 
+  throwIfCalculationCancelled(signal);
   return scores;
 }
 

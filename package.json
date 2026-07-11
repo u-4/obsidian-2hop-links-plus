@@ -1,12 +1,15 @@
 {
   "name": "2hop-links-plus",
-  "version": "0.39.1",
+  "version": "0.40.0",
   "description": "Related links up to 2 hops away are displayed in a card format, allowing for easy browsing through connections between notes. Each card contains a preview of the corresponding note.",
   "main": "main.js",
   "scripts": {
     "dev": "node esbuild.config.mjs",
     "build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
     "eslint": "eslint .",
+    "test": "node scripts/run-tests.mjs",
+    "test:performance": "node scripts/run-tests.mjs",
+    "benchmark": "node scripts/run-tests.mjs --benchmark",
     "prettier": "prettier --write **/*.{tsx,md,ts}"
   },
   "keywords": [],

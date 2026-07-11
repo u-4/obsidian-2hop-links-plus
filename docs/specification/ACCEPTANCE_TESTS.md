@@ -7,14 +7,17 @@ From the plugin repository root:
 ```bash
 npm ci
 npm run build
+npm test
 npm run eslint
 git diff --check
 npm audit
+npm run benchmark
 ```
 
 Expected result:
 
 - `npm run build` completes without TypeScript errors.
+- `npm test` completes with all synthetic-Vault coordination and cache tests passing.
 - Existing settings and UI still render.
 - `npm run eslint` completes with zero warnings and zero errors.
 - `npm audit` reports zero known vulnerabilities.
@@ -248,6 +251,18 @@ each Canvas node's `file` value to the vault-relative path (for example,
 
 On a larger real vault:
 
+- During startup, the first calculation begins only after layout restoration and
+  the startup grace period. Later short-delay events must not pull it forward.
+- Rapidly switch A → B → C. Only C should render after the configured delay.
+- Return to A. The recent result should be reused if metadata and settings have
+  not changed.
 - Opening a note should not freeze Obsidian for several seconds.
 - Typing in the search box should feel immediate because it filters precomputed card arrays rather than rebuilding the graph.
-- If performance is poor, cache `GraphIndex` and invalidate on `metadataCache.on("resolved")` or `metadataCache.on("changed")`.
+- After editing a Markdown file, graph-backed results refresh after Obsidian's
+  link resolution completes.
+- Run `Reset performance statistics`, switch several tabs, then run
+  `Show performance statistics`. In a stable metadata revision, graph builds
+  should remain near one while graph/result hits increase. Cancellation counts
+  may increase during rapid switching and are not errors.
+- With `Show Back Links` disabled on a Markdown note, Canvas files are not read
+  merely to build hidden backlinks.
