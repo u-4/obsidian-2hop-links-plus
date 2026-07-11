@@ -18,6 +18,8 @@
 - Prevented hover previews and Hover Editor popups from changing the active 2-hop target.
 - Corrected switching between ordinary and pinned main-note tabs.
 - Stabilized section keys and cleared stale async previews while reloading.
+- Replaced the large settings text button with a compact gear icon and added a
+  sort-order dropdown beside the card search box.
 
 ## Review and testing
 

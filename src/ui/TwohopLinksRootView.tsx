@@ -18,6 +18,7 @@ import {
   filterPropertiesLinks,
   filterTwoHopLinks,
 } from "../search";
+import { SORT_ORDER_OPTIONS } from "../settings/sortOptions";
 
 interface TwohopLinksRootViewProps {
   forwardConnectedLinks: FileEntity[];
@@ -38,6 +39,8 @@ interface TwohopLinksRootViewProps {
   showPropertiesLinks: boolean;
   autoLoadTwoHopLinks: boolean;
   includeBodyInCardSearch: boolean;
+  sortOrder: string;
+  onSortOrderChange: (sortOrder: string) => Promise<void>;
   initialBoxCount: number;
   initialSectionCount: number;
 }
@@ -77,6 +80,7 @@ export default class TwohopLinksRootView extends React.Component<
   private searchDebounceTimer: number | null = null;
   private searchGeneration = 0;
   private isUnmounted = false;
+  private settingsButtonRef = createRef<HTMLButtonElement>();
 
   constructor(props: TwohopLinksRootViewProps) {
     super(props);
@@ -217,6 +221,9 @@ export default class TwohopLinksRootView extends React.Component<
   };
 
   componentDidMount() {
+    if (this.settingsButtonRef.current) {
+      setIcon(this.settingsButtonRef.current, "settings");
+    }
     for (const ref of Object.values(this.loadMoreRefs)) {
       if (ref.current) {
         setIcon(ref.current, "more-horizontal");
@@ -236,6 +243,9 @@ export default class TwohopLinksRootView extends React.Component<
       if (this.state.searchInput.trim().length > 0) {
         this.scheduleSearch(this.state.searchInput);
       }
+    }
+    if (this.settingsButtonRef.current) {
+      setIcon(this.settingsButtonRef.current, "settings");
     }
     for (const ref of Object.values(this.loadMoreRefs)) {
       if (ref.current) {
@@ -327,15 +337,6 @@ export default class TwohopLinksRootView extends React.Component<
     return (
       <div>
         <div className="twohop-links-toolbar">
-          <button
-            className="settings-button"
-            onClick={() => {
-              this.props.app.setting.open();
-              this.props.app.setting.openTabById("2hop-links-plus");
-            }}
-          >
-            Open Settings
-          </button>
           <input
             className="twohop-links-search-input"
             type="search"
@@ -345,6 +346,31 @@ export default class TwohopLinksRootView extends React.Component<
               this.handleSearchChange(event.currentTarget.value)
             }
           />
+          <button
+            ref={this.settingsButtonRef}
+            className="clickable-icon twohop-links-settings-button"
+            aria-label="Open 2Hop Links Plus settings"
+            title="Open settings"
+            onClick={() => {
+              this.props.app.setting.open();
+              this.props.app.setting.openTabById("2hop-links-plus");
+            }}
+          />
+          <select
+            className="dropdown twohop-links-sort-select"
+            aria-label="Sort order"
+            title="Sort order"
+            value={this.props.sortOrder}
+            onChange={async (event) =>
+              this.props.onSortOrderChange(event.currentTarget.value)
+            }
+          >
+            {Object.keys(SORT_ORDER_OPTIONS).map((value) => (
+              <option key={value} value={value}>
+                {SORT_ORDER_OPTIONS[value]}
+              </option>
+            ))}
+          </select>
           {this.state.isPreparingBodySearch && (
             <span className="twohop-links-search-status">
               Searching body...

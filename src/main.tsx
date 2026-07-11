@@ -19,9 +19,10 @@ import {
 import { SeparatePaneView } from "./ui/SeparatePaneView";
 import { readPreview } from "./preview";
 import { getTitle } from "./getTitle";
-import { loadSettings } from "./settings/index";
+import { loadSettings, saveSettings } from "./settings/index";
 import { Links } from "./links";
 import { OpenPaneTarget } from "./types";
+import { isSortOrder } from "./settings/sortOptions";
 
 const CONTAINER_CLASS = "twohop-links-container";
 export const HOVER_LINK_ID = "2hop-links";
@@ -255,6 +256,16 @@ export default class TwohopLinksPlugin extends Plugin {
     }
   }
 
+  async setSortOrder(sortOrder: string): Promise<void> {
+    if (!isSortOrder(sortOrder) || this.settings.sortOrder === sortOrder) {
+      return;
+    }
+
+    this.settings.sortOrder = sortOrder;
+    await saveSettings(this);
+    await this.updateTwoHopLinksView();
+  }
+
   isTwoHopLinksViewOpen(): boolean {
     return this.app.workspace.getLeavesOfType("TwoHopLinksView").length > 0;
   }
@@ -402,6 +413,8 @@ export default class TwohopLinksPlugin extends Plugin {
         showPropertiesLinks={showPropertiesLinks}
         autoLoadTwoHopLinks={this.settings.autoLoadTwoHopLinks}
         includeBodyInCardSearch={this.settings.includeBodyInCardSearch}
+        sortOrder={this.settings.sortOrder}
+        onSortOrderChange={this.setSortOrder.bind(this)}
         initialBoxCount={this.settings.initialBoxCount}
         initialSectionCount={this.settings.initialSectionCount}
       />,

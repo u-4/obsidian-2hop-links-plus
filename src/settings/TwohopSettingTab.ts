@@ -1,6 +1,7 @@
 import { App, PluginSettingTab, Setting } from "obsidian";
 import TwohopLinksPlugin from "../main";
 import { saveSettings } from ".";
+import { SORT_ORDER_OPTIONS } from "./sortOptions";
 
 export interface TwohopPluginSettings {
   autoLoadTwoHopLinks: boolean;
@@ -52,19 +53,12 @@ export class TwohopSettingTab extends PluginSettingTab {
         "panePositionIsRight"
       );
     }
-    this.createDropdownSetting("Sort Order", "", "sortOrder", {
-      random: "Random",
-      filenameAsc: "File name (A to Z)",
-      filenameDesc: "File name (Z to A)",
-      modifiedDesc: "Modified time (new to old)",
-      modifiedAsc: "Modified time (old to new)",
-      createdDesc: "Created time (new to old)",
-      createdAsc: "Created time (old to new)",
-      relatedScoreDesc: "Related score",
-      relatedCosenseLike: "Related, Cosense-like",
-      pageRankDesc: "Page rank",
-      mostLinkedDesc: "Most linked",
-    });
+    this.createDropdownSetting(
+      "Sort Order",
+      "",
+      "sortOrder",
+      SORT_ORDER_OPTIONS
+    );
     this.createToggleSetting("Show Links", "", "showForwardConnectedLinks");
     this.createToggleSetting(
       "Show Back Links",

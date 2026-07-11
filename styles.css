@@ -142,6 +142,7 @@ body:not(.zoom-off)
 .twohop-links-toolbar {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 8px;
   margin: 12px 20px 0;
 }
@@ -152,14 +153,23 @@ body:not(.zoom-off)
   flex: 1 1 240px;
 }
 
+.twohop-links-settings-button {
+  flex: 0 0 auto;
+  width: var(--input-height);
+  height: var(--input-height);
+  padding: 4px;
+}
+
+.twohop-links-sort-select {
+  flex: 0 1 200px;
+  min-width: 150px;
+  max-width: 220px;
+}
+
 .twohop-links-search-status {
   color: var(--text-muted);
   font-size: 80%;
   white-space: nowrap;
-}
-
-.settings-button {
-  cursor: pointer;
 }
 
 /* @settings
