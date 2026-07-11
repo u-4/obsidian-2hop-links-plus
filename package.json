@@ -13,16 +13,13 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
-    "@types/react": "^17.0.3",
-    "@types/react-dom": "17.0.2",
-    "obsidian": "obsidianmd/obsidian-api#master",
     "react": "17.0.1",
-    "react-dom": "17.0.1",
-    "tslib": "2.2.0"
+    "react-dom": "17.0.1"
   },
   "devDependencies": {
-    "@babel/preset-react": "7.12.13",
     "@types/node": "^14.14.37",
+    "@types/react": "^17.0.3",
+    "@types/react-dom": "17.0.2",
     "@typescript-eslint/eslint-plugin": "^4.22.0",
     "@typescript-eslint/parser": "^4.22.0",
     "builtin-modules": "3.3.0",
