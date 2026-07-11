@@ -19,6 +19,10 @@ git diff --check
 must report no known dependency vulnerabilities. The build creates `main.js`,
 which remains ignored because it is a generated artifact.
 
+`package.json` approves only the pinned `esbuild` install script. When updating
+esbuild, inspect the new package script and re-approve that exact version with
+`npm approve-scripts esbuild`; do not approve all dependency scripts at once.
+
 ## Manual acceptance
 
 Use `test-vault/README_TEST_VAULT.md` and
