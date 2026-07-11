@@ -22,6 +22,12 @@
 16. `Active.md` の Back Links に `CanvasBacklink.canvas` が現れることを確認する。
 17. `InvalidCanvasNodes.canvas` を開いてもプラグインが停止せず、空の結果として扱われることを確認する。
 
+> 既存のVault内のサブフォルダへこの試験データをコピーする場合、Canvasの
+> `file` はVaultルートからのパスである必要があります。たとえば配置先が
+> `2hop-links-plus-test/` なら、`RareA.md` を
+> `2hop-links-plus-test/RareA.md` に読み替えてください。このフォルダ自体を
+> Vaultとして開く場合は、同梱されたパスのままで利用できます。
+
 ## 期待される確認観点
 
 - `MultiSharedCandidate.md` は複数の共通リンクを持つ。

@@ -223,6 +223,11 @@ Canvas checks require `Show 2hop links in separate pane`:
 - Open `InvalidCanvasNodes.canvas`; the plugin remains enabled and shows no
   Canvas-derived results rather than throwing an exception.
 
+When these fixtures are copied into a subfolder of an existing vault, update
+each Canvas node's `file` value to the vault-relative path (for example,
+`2hop-links-plus-test/RareA.md`). The bundled short paths are correct when
+`test-vault/` itself is opened as the vault root.
+
 ## 14. Regression checks
 
 - Forward Links still open normally.
