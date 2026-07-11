@@ -17,6 +17,7 @@ npm ci
 npm run build
 npm run eslint
 git diff --check
+npm audit
 ```
 
 `npm run eslint` must finish with zero warnings and zero errors. `npm audit`
@@ -50,5 +51,5 @@ confirm the following interaction behavior:
 ## Rollback
 
 Restore the three files from the most recent timestamped backup, then reload the
-plugin or restart Obsidian. The migration itself does not alter the installed
-Vault plugin.
+plugin or restart Obsidian. The update procedure itself does not modify Vault
+notes or attachments.

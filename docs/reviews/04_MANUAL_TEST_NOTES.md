@@ -1,29 +1,39 @@
-# Manual Test Notes
+# Manual test notes
 
-Manual Obsidian UI testing was not performed during this bundle step.
+## Version 0.39.1 acceptance — 2026-07-11
 
-## Checklist Status
+- Test environment: Obsidian 1.12.7 and the dedicated local test Vault.
+- Installed candidate: version 0.39.1, using only `main.js`, `manifest.json`,
+  and `styles.css`.
+- Runtime candidate source: commit `5445ecc`. The subsequent release-record
+  edits change documentation only, not plugin source or build configuration.
+- Maintainer result: no problems found in the test-Vault manual checks; release
+  approval received.
+- Explicit maintainer confirmation: the settings default sort and the temporary
+  sort in the current 2-hop view remain independent.
 
-- Not performed: Searching the active note name does not match all cards merely because `sourcePath` is the active note.
-- Not performed: Body-only token matches candidate card body only when body search is ON.
-- Not performed: Body-only token does not match after body search is OFF, even if body text was previously cached.
-- Not performed: `folderA/Foo.md` and `folderB/Foo.md` can both appear in tag cards if both share a tag.
-- Not performed: Frontmatter-related cards do not throw when active file cache/frontmatter is unavailable.
-- Not performed: 2-hop card click jumps to the candidate page line containing the intermediate link.
-- Not performed: Back Links card click jumps to the backlink source line containing the active-page link.
-- Not performed: Hover Preview and dragged wikilink disambiguate same-basename files by path.
+Codex-assisted UI checks also confirmed:
 
-## Included Test Vault
+- toolbar search, settings button, and temporary sort controls render and work;
+- body-only search terms filter the existing candidate set;
+- frontmatter-only links participate in 2-hop discovery and search;
+- valid Canvas file nodes and Canvas backlinks are handled;
+- invalid Canvas `nodes` data produces an empty result without disabling the
+  plugin;
+- the separate-pane setting was restored after testing.
 
-The previous follow-up test vault is included under `test-vault/`.
+Automated release checks confirmed:
 
-## Suggested Extra Manual Fixture
+- clean lockfile installation with no unreviewed install scripts;
+- build and strict null checking complete successfully;
+- ESLint completes with zero warnings and zero errors;
+- dependency audit reports zero known vulnerabilities;
+- pull-request Validate and CodeQL checks pass.
 
-For same-basename checks, add two notes such as:
+## Residual platform-specific risks
 
-```text
-folderA/Foo.md
-folderB/Foo.md
-```
-
-Give both notes the same tag and confirm both appear in tag cards when they are valid candidates.
+Mobile long-press behavior and responsiveness in a substantially larger Vault
+were not separately reproduced in this release session. They remain focused
+follow-up checks rather than known regressions. The release can be rolled back
+by restoring the backed-up `main.js`, `manifest.json`, and `styles.css` and
+reloading the plugin.
