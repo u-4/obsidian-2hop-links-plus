@@ -19,6 +19,7 @@ import {
   filterTwoHopLinks,
 } from "../search";
 import { SORT_ORDER_OPTIONS } from "../settings/sortOptions";
+import type { SortOrder } from "../settings/sortOptions";
 
 interface TwohopLinksRootViewProps {
   forwardConnectedLinks: FileEntity[];
@@ -39,7 +40,7 @@ interface TwohopLinksRootViewProps {
   showPropertiesLinks: boolean;
   autoLoadTwoHopLinks: boolean;
   includeBodyInCardSearch: boolean;
-  sortOrder: string;
+  sortOrder: SortOrder;
   onSortOrderChange: (sortOrder: string) => Promise<void>;
   initialBoxCount: number;
   initialSectionCount: number;
@@ -133,12 +134,12 @@ export default class TwohopLinksRootView extends React.Component<
     };
   }
 
-  handleSearchChange = (searchInput: string) => {
+  handleSearchChange = (searchInput: string): void => {
     this.setState({ searchInput });
     this.scheduleSearch(searchInput);
   };
 
-  private scheduleSearch(searchInput: string) {
+  private scheduleSearch(searchInput: string): void {
     if (this.searchDebounceTimer != null) {
       window.clearTimeout(this.searchDebounceTimer);
     }
@@ -185,7 +186,10 @@ export default class TwohopLinksRootView extends React.Component<
     }, BODY_SEARCH_DEBOUNCE_MS);
   }
 
-  private applyDebouncedSearch(searchQuery: string, includeBody: boolean) {
+  private applyDebouncedSearch(
+    searchQuery: string,
+    includeBody: boolean
+  ): void {
     this.setState((prevState) => ({
       searchQuery,
       includeBodyInSearchResults: includeBody,
@@ -197,7 +201,7 @@ export default class TwohopLinksRootView extends React.Component<
     }));
   }
 
-  loadMoreBox = (category: Category) => {
+  loadMoreBox = (category: Category): void => {
     this.setState((prevState) => ({
       displayedBoxCount: {
         ...prevState.displayedBoxCount,
@@ -208,7 +212,7 @@ export default class TwohopLinksRootView extends React.Component<
     }));
   };
 
-  loadMoreSections = (category: Category) => {
+  loadMoreSections = (category: Category): void => {
     this.setState((prevState) => ({
       displayedSectionCount: {
         ...prevState.displayedSectionCount,
@@ -220,7 +224,7 @@ export default class TwohopLinksRootView extends React.Component<
     }));
   };
 
-  componentDidMount() {
+  componentDidMount(): void {
     if (this.settingsButtonRef.current) {
       setIcon(this.settingsButtonRef.current, "settings");
     }
@@ -231,7 +235,7 @@ export default class TwohopLinksRootView extends React.Component<
     }
   }
 
-  componentDidUpdate(prevProps: TwohopLinksRootViewProps) {
+  componentDidUpdate(prevProps: TwohopLinksRootViewProps): void {
     if (this.props !== prevProps) {
       this.setState((prevState) => ({
         displayedBoxCount: this.initialDisplayedBoxCount(),
@@ -254,7 +258,7 @@ export default class TwohopLinksRootView extends React.Component<
     }
   }
 
-  componentWillUnmount() {
+  componentWillUnmount(): void {
     this.isUnmounted = true;
     this.searchGeneration++;
     if (this.searchDebounceTimer != null) {
@@ -365,9 +369,9 @@ export default class TwohopLinksRootView extends React.Component<
               this.props.onSortOrderChange(event.currentTarget.value)
             }
           >
-            {Object.keys(SORT_ORDER_OPTIONS).map((value) => (
+            {Object.entries(SORT_ORDER_OPTIONS).map(([value, label]) => (
               <option key={value} value={value}>
-                {SORT_ORDER_OPTIONS[value]}
+                {label}
               </option>
             ))}
           </select>

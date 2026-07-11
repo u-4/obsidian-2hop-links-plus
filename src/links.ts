@@ -22,12 +22,48 @@ import {
   isRankingSortOrder,
   RelatedCandidateScore,
 } from "./ranking";
+import type { TwohopPluginSettings } from "./settings/TwohopSettingTab";
+import { getFrontmatterLinks } from "./obsidianCompat";
+import type { SortOrder } from "./settings/sortOptions";
+
+type CanvasFileNode = {
+  type: "file";
+  file: string;
+};
+
+function isCanvasFileNode(value: unknown): value is CanvasFileNode {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const node = value as { type?: unknown; file?: unknown };
+  return node.type === "file" && typeof node.file === "string";
+}
+
+function parseCanvasFileNodes(canvasContent: string): CanvasFileNode[] {
+  let canvasData: unknown;
+  try {
+    canvasData = JSON.parse(canvasContent);
+  } catch (error) {
+    console.error("Invalid JSON in canvas:", error);
+    return [];
+  }
+
+  const nodes = (canvasData as { nodes?: unknown })?.nodes;
+  if (nodes == null) {
+    return [];
+  }
+  if (!Array.isArray(nodes)) {
+    console.error("Invalid structure in canvas: nodes is not an array");
+    return [];
+  }
+  return nodes.filter(isCanvasFileNode);
+}
 
 export class Links {
   app: App;
-  settings: any;
+  settings: TwohopPluginSettings;
 
-  constructor(app: App, settings: any) {
+  constructor(app: App, settings: TwohopPluginSettings) {
     this.app = app;
     this.settings = settings;
   }
@@ -340,13 +376,13 @@ export class Links {
       activeFileCache != null &&
       (activeFileCache.links != null ||
         activeFileCache.embeds != null ||
-        (activeFileCache as any).frontmatterLinks != null)
+        getFrontmatterLinks(activeFileCache).length > 0)
     ) {
       const seen = new Set<string>();
       const linkEntities = [
         ...(activeFileCache.links || []),
         ...(activeFileCache.embeds || []),
-        ...(((activeFileCache as any).frontmatterLinks as any[]) || []),
+        ...getFrontmatterLinks(activeFileCache),
       ];
 
       for (const it of linkEntities) {
@@ -403,51 +439,35 @@ export class Links {
       }
     } else if (activeFile.extension === "canvas") {
       const canvasContent = await this.app.vault.read(activeFile);
-      let canvasData;
-      try {
-        canvasData = JSON.parse(canvasContent);
-        if (canvasData.nodes) {
-          if (!Array.isArray(canvasData.nodes)) {
-            console.error("Invalid structure in canvas: nodes is not an array");
-            canvasData = { nodes: [] };
-          }
-        }
-      } catch (error) {
-        console.error("Invalid JSON in canvas:", error);
-        canvasData = { nodes: [] };
-      }
+      const canvasNodes = parseCanvasFileNodes(canvasContent);
 
       const seen = new Set<string>();
-      if (canvasData.nodes) {
-        for (const node of canvasData.nodes) {
-          if (node.type === "file") {
-            const key = node.file;
-            if (!seen.has(key)) {
-              seen.add(key);
-              const targetFile = this.app.vault.getAbstractFileByPath(key);
-              if (
-                targetFile &&
-                !shouldExcludePath(targetFile.path, this.settings.excludePaths)
-              ) {
-                resolvedLinks.push(
-                  this.applyRankingFields(
-                    new FileEntity(
-                      targetFile.path,
-                      key,
-                      undefined,
-                      targetFile.path
-                    ),
-                    targetFile.path,
-                    graphIndex,
-                    relatedScores,
-                    activeFile.path,
-                    targetFile.path
-                  )
-                );
-              } else {
-                newLinks.push(new FileEntity(activeFile.path, key));
-              }
-            }
+      for (const node of canvasNodes) {
+        const key = node.file;
+        if (!seen.has(key)) {
+          seen.add(key);
+          const targetFile = this.app.vault.getAbstractFileByPath(key);
+          if (
+            targetFile &&
+            !shouldExcludePath(targetFile.path, this.settings.excludePaths)
+          ) {
+            resolvedLinks.push(
+              this.applyRankingFields(
+                new FileEntity(
+                  targetFile.path,
+                  key,
+                  undefined,
+                  targetFile.path
+                ),
+                targetFile.path,
+                graphIndex,
+                relatedScores,
+                activeFile.path,
+                targetFile.path
+              )
+            );
+          } else {
+            newLinks.push(new FileEntity(activeFile.path, key));
           }
         }
       }
@@ -527,41 +547,27 @@ export class Links {
 
     for (const canvasFile of canvasFiles) {
       const canvasContent = await this.app.vault.read(canvasFile);
-      let canvasData;
-      try {
-        canvasData = JSON.parse(canvasContent);
-        if (canvasData.nodes) {
-          if (!Array.isArray(canvasData.nodes)) {
-            console.error("Invalid structure in canvas: nodes is not an array");
-            canvasData = { nodes: [] };
-          }
-        }
-      } catch (error) {
-        console.error("Invalid JSON in canvas:", error);
-        canvasData = { nodes: [] };
-      }
+      const canvasNodes = parseCanvasFileNodes(canvasContent);
 
-      if (canvasData.nodes) {
-        for (const node of canvasData.nodes) {
-          if (node.type === "file" && node.file === activeFile.path) {
-            const linkText = filePathToLinkText(canvasFile.path);
-            if (!this.hasKnownEntity(forwardLinkSet, canvasFile.path)) {
-              backLinkEntities.push(
-                this.applyRankingFields(
-                  new FileEntity(
-                    canvasFile.path,
-                    linkText,
-                    activeFile.path,
-                    canvasFile.path
-                  ),
+      for (const node of canvasNodes) {
+        if (node.file === activeFile.path) {
+          const linkText = filePathToLinkText(canvasFile.path);
+          if (!this.hasKnownEntity(forwardLinkSet, canvasFile.path)) {
+            backLinkEntities.push(
+              this.applyRankingFields(
+                new FileEntity(
                   canvasFile.path,
-                  graphIndex,
-                  relatedScores,
+                  linkText,
                   activeFile.path,
                   canvasFile.path
-                )
-              );
-            }
+                ),
+                canvasFile.path,
+                graphIndex,
+                relatedScores,
+                activeFile.path,
+                canvasFile.path
+              )
+            );
           }
         }
       }
@@ -632,21 +638,7 @@ export class Links {
     let linkKeys: string[] = [];
     if (activeFile.extension === "canvas") {
       const canvasContent = await this.app.vault.read(activeFile);
-      let canvasData;
-      try {
-        canvasData = JSON.parse(canvasContent);
-      } catch (error) {
-        console.error("Invalid JSON in canvas:", error);
-        canvasData = { nodes: [] };
-      }
-
-      if (Array.isArray(canvasData.nodes)) {
-        linkKeys = canvasData.nodes
-          .filter((node: any) => node.type === "file")
-          .map((node: any) => node.file);
-      } else {
-        linkKeys = [];
-      }
+      linkKeys = parseCanvasFileNodes(canvasContent).map((node) => node.file);
     } else if (links[activeFile.path]) {
       linkKeys = Object.keys(links[activeFile.path]);
     }
@@ -686,7 +678,14 @@ export class Links {
             return null;
           })
       )
-    ).filter((it) => it);
+    ).filter(
+      (
+        it
+      ): it is {
+        link: FileEntity;
+        fileEntities: FileEntity[];
+      } => it !== null
+    );
 
     const twoHopLinkStatsPromises = twoHopLinkEntities.map(
       async (twoHopLinkEntity) => {
@@ -698,7 +697,8 @@ export class Links {
     );
 
     const twoHopLinkStats = (await Promise.all(twoHopLinkStatsPromises)).filter(
-      (it) => it && it.twoHopLinkEntity && it.stat
+      (it): it is typeof it & { stat: NonNullable<typeof it.stat> } =>
+        Boolean(it.stat)
     );
 
     const twoHopSortFunction = getTwoHopSortFunction(this.settings.sortOrder);
@@ -708,8 +708,8 @@ export class Links {
       .map(
         (it) =>
           new TwohopLink(
-            it!.twoHopLinkEntity.link,
-            it!.twoHopLinkEntity.fileEntities
+            it.twoHopLinkEntity.link,
+            it.twoHopLinkEntity.fileEntities
           )
       )
       .filter((it) => it.fileEntities.length > 0);
@@ -783,11 +783,9 @@ export class Links {
           sectionPath
         );
 
-        groupedEntities.set(
-          sectionPath,
-          groupedEntities.get(sectionPath) ?? []
-        );
-        groupedEntities.get(sectionPath)!.push(entity);
+        const sectionEntities = groupedEntities.get(sectionPath) ?? [];
+        sectionEntities.push(entity);
+        groupedEntities.set(sectionPath, sectionEntities);
       }
 
       seenCandidatePaths.add(candidatePath);
@@ -846,26 +844,8 @@ export class Links {
 
     if (activeFile.extension === "canvas") {
       const canvasContent = await this.app.vault.read(activeFile);
-      let canvasData;
-      try {
-        canvasData = JSON.parse(canvasContent);
-        if (canvasData.nodes) {
-          if (!Array.isArray(canvasData.nodes)) {
-            console.error("Invalid structure in canvas: nodes is not an array");
-            canvasData = { nodes: [] };
-          }
-        }
-      } catch (error) {
-        console.error("Invalid JSON in canvas:", error);
-        canvasData = { nodes: [] };
-      }
-
-      if (canvasData.nodes) {
-        for (const node of canvasData.nodes) {
-          if (node.type === "file") {
-            activeFileLinks.add(node.file);
-          }
-        }
+      for (const node of parseCanvasFileNodes(canvasContent)) {
+        activeFileLinks.add(node.file);
       }
     }
 
@@ -1081,7 +1061,7 @@ export class Links {
   }
 
   async createPropertiesLinkEntities(
-    settings: any,
+    settings: TwohopPluginSettings,
     propertiesMap: Record<string, FileEntity[]>,
     key = ""
   ): Promise<PropertiesLinks[]> {
@@ -1163,18 +1143,18 @@ export class Links {
   async getSortedFileEntities(
     entities: FileEntity[],
     sourcePathFn: (entity: FileEntity) => string,
-    sortOrder: string
+    sortOrder: SortOrder
   ): Promise<FileEntity[]> {
     const statsPromises = entities.map(async (entity) => {
       const stat = await this.app.vault.adapter.stat(sourcePathFn(entity));
       return { entity, stat };
     });
 
-    const stats = (await Promise.all(statsPromises)).filter((it) => it);
+    const stats = await Promise.all(statsPromises);
 
     const sortFunction = getSortFunction(sortOrder);
     stats.sort(sortFunction);
 
-    return stats.map((it) => it!.entity);
+    return stats.map((it) => it.entity);
   }
 }

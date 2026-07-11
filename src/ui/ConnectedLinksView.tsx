@@ -24,13 +24,13 @@ export default class ConnectedLinksView extends React.Component<ConnectedLinksVi
     this.loadMoreRef = React.createRef();
   }
 
-  componentDidMount() {
+  componentDidMount(): void {
     if (this.loadMoreRef.current) {
       setIcon(this.loadMoreRef.current, "more-horizontal");
     }
   }
 
-  shouldComponentUpdate(nextProps: ConnectedLinksViewProps) {
+  shouldComponentUpdate(nextProps: ConnectedLinksViewProps): boolean {
     return (
       nextProps.fileEntities !== this.props.fileEntities ||
       nextProps.displayedBoxCount !== this.props.displayedBoxCount ||

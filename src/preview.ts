@@ -1,8 +1,12 @@
 import { FileEntity } from "./model/FileEntity";
 import { removeBlockReference } from "./utils";
 import { TFile } from "obsidian";
+import type TwohopLinksPlugin from "./main";
 
-export async function readPreview(fileEntity: FileEntity) {
+export async function readPreview(
+  this: TwohopLinksPlugin,
+  fileEntity: FileEntity
+): Promise<string> {
   const linkText = removeBlockReference(fileEntity.linkText);
 
   if (fileEntity.linkText.match(/\.(png|bmp|jpg|jpeg|webp)$/i)) {

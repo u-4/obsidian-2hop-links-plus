@@ -1,42 +1,66 @@
-import { TFile } from "obsidian";
+import { Stat, TFile } from "obsidian";
+import { FileEntity } from "./model/FileEntity";
 import { PropertiesLinks } from "./model/PropertiesLinks";
+import { TwohopLink } from "./model/TwohopLink";
+import type { SortOrder } from "./settings/sortOptions";
 
-export function getSortFunction(sortOrder: string) {
+type RankingKey = "relatedScore" | "pageRank" | "inDegree" | "activeLinkOrder";
+
+type SortStat = Pick<Stat, "mtime" | "ctime">;
+type SortEntity = Pick<FileEntity, "linkText"> &
+  Partial<Pick<FileEntity, RankingKey>>;
+
+type EntitySortItem = Partial<Record<RankingKey, number>> & {
+  entity?: SortEntity;
+  linkText?: string;
+  stat?: SortStat | null;
+};
+
+type TwoHopSortItem = Partial<Record<RankingKey, number>> & {
+  twoHopLinkEntity?: TwohopLink;
+  stat?: SortStat | null;
+};
+
+type EntitySortComparator = (a: EntitySortItem, b: EntitySortItem) => number;
+type TwoHopSortComparator = (a: TwoHopSortItem, b: TwoHopSortItem) => number;
+type FileSortValue = (file: TFile) => string | number;
+
+export function getSortFunction(sortOrder: SortOrder): EntitySortComparator {
   switch (sortOrder) {
     case "random":
       return () => Math.random() - 0.5;
     case "filenameAsc":
-      return (a: any, b: any) =>
+      return (a, b) =>
         a.entity && b.entity
           ? a.entity.linkText.localeCompare(b.entity.linkText)
           : Math.random() - 0.5;
     case "filenameDesc":
-      return (a: any, b: any) =>
+      return (a, b) =>
         a.entity && b.entity
           ? b.entity.linkText.localeCompare(a.entity.linkText)
           : Math.random() - 0.5;
     case "modifiedDesc":
-      return (a: any, b: any) =>
+      return (a, b) =>
         a.stat && b.stat && a.stat.mtime && b.stat.mtime
           ? b.stat.mtime - a.stat.mtime
           : Math.random() - 0.5;
     case "modifiedAsc":
-      return (a: any, b: any) =>
+      return (a, b) =>
         a.stat && b.stat && a.stat.mtime && b.stat.mtime
           ? a.stat.mtime - b.stat.mtime
           : Math.random() - 0.5;
     case "createdDesc":
-      return (a: any, b: any) =>
+      return (a, b) =>
         a.stat && b.stat && a.stat.ctime && b.stat.ctime
           ? b.stat.ctime - a.stat.ctime
           : Math.random() - 0.5;
     case "createdAsc":
-      return (a: any, b: any) =>
+      return (a, b) =>
         a.stat && b.stat && a.stat.ctime && b.stat.ctime
           ? a.stat.ctime - b.stat.ctime
           : Math.random() - 0.5;
     case "relatedScoreDesc":
-      return (a: any, b: any) =>
+      return (a, b) =>
         compareNumberDesc(
           getEntityNumber(a, "relatedScore"),
           getEntityNumber(b, "relatedScore")
@@ -48,7 +72,7 @@ export function getSortFunction(sortOrder: string) {
         compareStatDesc(a, b, "mtime") ||
         compareEntityTitleAsc(a, b);
     case "relatedCosenseLike":
-      return (a: any, b: any) =>
+      return (a, b) =>
         compareNumberAsc(
           getEntityNumber(a, "activeLinkOrder", Number.MAX_SAFE_INTEGER),
           getEntityNumber(b, "activeLinkOrder", Number.MAX_SAFE_INTEGER)
@@ -60,7 +84,7 @@ export function getSortFunction(sortOrder: string) {
         compareStatDesc(a, b, "mtime") ||
         compareEntityTitleAsc(a, b);
     case "pageRankDesc":
-      return (a: any, b: any) =>
+      return (a, b) =>
         compareNumberDesc(
           getEntityNumber(a, "pageRank"),
           getEntityNumber(b, "pageRank")
@@ -72,7 +96,7 @@ export function getSortFunction(sortOrder: string) {
         compareStatDesc(a, b, "mtime") ||
         compareEntityTitleAsc(a, b);
     case "mostLinkedDesc":
-      return (a: any, b: any) =>
+      return (a, b) =>
         compareNumberDesc(
           getEntityNumber(a, "inDegree"),
           getEntityNumber(b, "inDegree")
@@ -84,36 +108,39 @@ export function getSortFunction(sortOrder: string) {
         compareStatDesc(a, b, "mtime") ||
         compareEntityTitleAsc(a, b);
   }
+  throw new Error(`Unsupported sort order: ${sortOrder}`);
 }
 
-export function getTwoHopSortFunction(sortOrder: string) {
+export function getTwoHopSortFunction(
+  sortOrder: SortOrder
+): TwoHopSortComparator {
   switch (sortOrder) {
     case "random":
       return () => Math.random() - 0.5;
     case "filenameAsc":
-      return (a: any, b: any) =>
+      return (a, b) =>
         a.twoHopLinkEntity && b.twoHopLinkEntity
           ? a.twoHopLinkEntity.link.linkText.localeCompare(
               b.twoHopLinkEntity.link.linkText
             )
           : Math.random() - 0.5;
     case "filenameDesc":
-      return (a: any, b: any) =>
+      return (a, b) =>
         a.twoHopLinkEntity && b.twoHopLinkEntity
           ? b.twoHopLinkEntity.link.linkText.localeCompare(
               a.twoHopLinkEntity.link.linkText
             )
           : Math.random() - 0.5;
     case "modifiedDesc":
-      return (a: any, b: any) => b.stat.mtime - a.stat.mtime;
+      return (a, b) => (b.stat?.mtime ?? 0) - (a.stat?.mtime ?? 0);
     case "modifiedAsc":
-      return (a: any, b: any) => a.stat.mtime - b.stat.mtime;
+      return (a, b) => (a.stat?.mtime ?? 0) - (b.stat?.mtime ?? 0);
     case "createdDesc":
-      return (a: any, b: any) => b.stat.ctime - a.stat.ctime;
+      return (a, b) => (b.stat?.ctime ?? 0) - (a.stat?.ctime ?? 0);
     case "createdAsc":
-      return (a: any, b: any) => a.stat.ctime - b.stat.ctime;
+      return (a, b) => (a.stat?.ctime ?? 0) - (b.stat?.ctime ?? 0);
     case "relatedScoreDesc":
-      return (a: any, b: any) =>
+      return (a, b) =>
         compareNumberDesc(
           getTwoHopNumber(a, "relatedScore"),
           getTwoHopNumber(b, "relatedScore")
@@ -121,13 +148,13 @@ export function getTwoHopSortFunction(sortOrder: string) {
         compareStatDesc(a, b, "mtime") ||
         compareTwoHopTitleAsc(a, b);
     case "relatedCosenseLike":
-      return (a: any, b: any) =>
+      return (a, b) =>
         compareNumberAsc(
           getTwoHopNumber(a, "activeLinkOrder", Number.MAX_SAFE_INTEGER),
           getTwoHopNumber(b, "activeLinkOrder", Number.MAX_SAFE_INTEGER)
         ) || compareTwoHopTitleAsc(a, b);
     case "pageRankDesc":
-      return (a: any, b: any) =>
+      return (a, b) =>
         compareNumberDesc(
           getTwoHopNumber(a, "pageRank"),
           getTwoHopNumber(b, "pageRank")
@@ -135,7 +162,7 @@ export function getTwoHopSortFunction(sortOrder: string) {
         compareStatDesc(a, b, "mtime") ||
         compareTwoHopTitleAsc(a, b);
     case "mostLinkedDesc":
-      return (a: any, b: any) =>
+      return (a, b) =>
         compareNumberDesc(
           getTwoHopNumber(a, "inDegree"),
           getTwoHopNumber(b, "inDegree")
@@ -147,9 +174,10 @@ export function getTwoHopSortFunction(sortOrder: string) {
         compareStatDesc(a, b, "mtime") ||
         compareTwoHopTitleAsc(a, b);
   }
+  throw new Error(`Unsupported sort order: ${sortOrder}`);
 }
 
-export function getSortFunctionForFile(sortOrder: string) {
+export function getSortFunctionForFile(sortOrder: SortOrder): FileSortValue {
   switch (sortOrder) {
     case "random":
       return () => Math.random() - 0.5;
@@ -171,6 +199,7 @@ export function getSortFunctionForFile(sortOrder: string) {
     case "mostLinkedDesc":
       return (file: TFile) => -file.stat.mtime;
   }
+  throw new Error(`Unsupported sort order: ${sortOrder}`);
 }
 
 export async function getSortedFiles(
@@ -199,7 +228,9 @@ export async function getSortedFiles(
   return fileEntities.map((entity) => entity.file);
 }
 
-export function getTagHierarchySortFunction(sortOrder: string) {
+export function getTagHierarchySortFunction(
+  sortOrder: SortOrder
+): (a: PropertiesLinks, b: PropertiesLinks) => number {
   const sortFunction = getSortFunction(sortOrder);
   return (a: PropertiesLinks, b: PropertiesLinks) => {
     const aTagHierarchy = a.property.split("/");
@@ -225,7 +256,7 @@ export function getTagHierarchySortFunction(sortOrder: string) {
 }
 
 function comparePropertyText(
-  sortFunction: ((a: any, b: any) => number) | undefined,
+  sortFunction: EntitySortComparator | undefined,
   a: string,
   b: string
 ): number {
@@ -235,8 +266,8 @@ function comparePropertyText(
 }
 
 function getEntityNumber(
-  item: any,
-  key: "relatedScore" | "pageRank" | "inDegree" | "activeLinkOrder",
+  item: EntitySortItem,
+  key: RankingKey,
   fallback = 0
 ): number {
   const value = item?.entity?.[key] ?? item?.[key];
@@ -244,8 +275,8 @@ function getEntityNumber(
 }
 
 function getTwoHopNumber(
-  item: any,
-  key: "relatedScore" | "pageRank" | "inDegree" | "activeLinkOrder",
+  item: TwoHopSortItem,
+  key: RankingKey,
   fallback = 0
 ): number {
   const value = item?.twoHopLinkEntity?.[key] ?? item?.[key];
@@ -260,17 +291,21 @@ function compareNumberAsc(a: number, b: number): number {
   return a - b;
 }
 
-function compareStatDesc(a: any, b: any, key: "mtime" | "ctime"): number {
+function compareStatDesc(
+  a: { stat?: SortStat | null },
+  b: { stat?: SortStat | null },
+  key: "mtime" | "ctime"
+): number {
   return (b?.stat?.[key] ?? 0) - (a?.stat?.[key] ?? 0);
 }
 
-function compareEntityTitleAsc(a: any, b: any): number {
+function compareEntityTitleAsc(a: EntitySortItem, b: EntitySortItem): number {
   const aText = a?.entity?.linkText ?? a?.linkText ?? "";
   const bText = b?.entity?.linkText ?? b?.linkText ?? "";
   return aText.localeCompare(bText);
 }
 
-function compareTwoHopTitleAsc(a: any, b: any): number {
+function compareTwoHopTitleAsc(a: TwoHopSortItem, b: TwoHopSortItem): number {
   const aText = a?.twoHopLinkEntity?.link?.linkText ?? "";
   const bText = b?.twoHopLinkEntity?.link?.linkText ?? "";
   return aText.localeCompare(bText);
