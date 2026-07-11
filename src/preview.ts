@@ -1,14 +1,21 @@
 import { FileEntity } from "./model/FileEntity";
 import { removeBlockReference } from "./utils";
+import { TFile } from "obsidian";
 
 export async function readPreview(fileEntity: FileEntity) {
   const linkText = removeBlockReference(fileEntity.linkText);
 
-  if (fileEntity.linkText.match(/\.(png|bmp|jpg|jpeg)$/i)) {
-    const file = this.app.metadataCache.getFirstLinkpathDest(
-      linkText,
-      fileEntity.sourcePath
-    );
+  if (fileEntity.linkText.match(/\.(png|bmp|jpg|jpeg|webp)$/i)) {
+    const abstractFile = fileEntity.targetPath
+      ? this.app.vault.getAbstractFileByPath(fileEntity.targetPath)
+      : null;
+    const file =
+      abstractFile instanceof TFile
+        ? abstractFile
+        : this.app.metadataCache.getFirstLinkpathDest(
+            linkText,
+            fileEntity.sourcePath
+          );
     if (file) {
       const resourcePath = this.app.vault.getResourcePath(file);
       return resourcePath;
@@ -28,10 +35,16 @@ export async function readPreview(fileEntity: FileEntity) {
       sourcePath=${fileEntity.sourcePath}`
   );
 
-  const file = this.app.metadataCache.getFirstLinkpathDest(
-    linkText,
-    fileEntity.sourcePath
-  );
+  const abstractFile = fileEntity.targetPath
+    ? this.app.vault.getAbstractFileByPath(fileEntity.targetPath)
+    : null;
+  const file =
+    abstractFile instanceof TFile
+      ? abstractFile
+      : this.app.metadataCache.getFirstLinkpathDest(
+          linkText,
+          fileEntity.sourcePath
+        );
   if (file == null) {
     return "";
   }
@@ -43,7 +56,7 @@ export async function readPreview(fileEntity: FileEntity) {
   const content = await this.app.vault.cachedRead(file);
 
   const combinedMatch = content.match(
-    /<iframe[^>]*src="([^"]+)"[^>]*>|!\[[^\]]*\]\((https:\/\/www\.youtube\.com\/embed\/[^\)]+|https:\/\/www\.youtube\.com\/watch\?v=[^\)]+|https:\/\/youtu\.be\/[^\)]+)\)|!\[(?:[^\]]*?)\]\(((?!https?:\/\/twitter\.com\/)[^\)]+?(?:png|bmp|jpg|jpeg))\)|!\[\[([^\]]+.(?:png|bmp|jpg|jpeg))\]\]/
+    /<iframe[^>]*src="([^"]+)"[^>]*>|!\[[^\]]*\]\((https:\/\/www\.youtube\.com\/embed\/[^)]+|https:\/\/www\.youtube\.com\/watch\?v=[^)]+|https:\/\/youtu\.be\/[^)]+)\)|!\[(?:[^\]]*?)\]\(((?!https?:\/\/twitter\.com\/)[^)]+?(?:png|bmp|jpg|jpeg|webp))\)|!\[\[([^\]]+.(?:png|bmp|jpg|jpeg|webp))\]\]/
   );
   if (combinedMatch) {
     const iframeUrl = combinedMatch[1];
@@ -64,13 +77,13 @@ export async function readPreview(fileEntity: FileEntity) {
       if (img.match(/^https?:\/\//)) {
         return img;
       } else {
-        const file = this.app.metadataCache.getFirstLinkpathDest(
+        const imageFile = this.app.metadataCache.getFirstLinkpathDest(
           img,
-          fileEntity.sourcePath
+          file.path
         );
-        console.debug(`Found image: ${img} = file=${file}`);
-        if (file) {
-          const resourcePath = this.app.vault.getResourcePath(file);
+        console.debug(`Found image: ${img} = file=${imageFile}`);
+        if (imageFile) {
+          const resourcePath = this.app.vault.getResourcePath(imageFile);
           console.debug(`Found image: ${img} resourcePath=${resourcePath}`);
           return resourcePath;
         }

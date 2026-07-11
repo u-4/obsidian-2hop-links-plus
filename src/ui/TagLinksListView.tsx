@@ -3,32 +3,34 @@ import { FileEntity } from "../model/FileEntity";
 import LinkView from "./LinkView";
 import { PropertiesLinks } from "../model/PropertiesLinks";
 import { App, setIcon } from "obsidian";
+import { OpenPaneTarget } from "../types";
 
 interface PropertiesLinksListViewProps {
   propertiesLinksList: PropertiesLinks[];
-  onClick: (fileEntity: FileEntity) => Promise<void>;
+  onClick: (fileEntity: FileEntity, newLeaf?: OpenPaneTarget) => Promise<void>;
   getPreview: (fileEntity: FileEntity) => Promise<string>;
   getTitle: (fileEntity: FileEntity) => Promise<string>;
   app: App;
   displayedSectionCount: number;
   initialDisplayedEntitiesCount: number;
-  resetDisplayedEntitiesCount: boolean;
+  resetCounter: number;
 }
 
 interface LinkComponentProps {
   tagLink: PropertiesLinks;
-  onClick: (fileEntity: FileEntity) => Promise<void>;
+  onClick: (fileEntity: FileEntity, newLeaf?: OpenPaneTarget) => Promise<void>;
   getPreview: (fileEntity: FileEntity) => Promise<string>;
   getTitle: (fileEntity: FileEntity) => Promise<string>;
   app: App;
   initialDisplayedEntitiesCount: number;
-  resetDisplayedEntitiesCount: boolean;
+  resetCounter: number;
 }
 
 interface LinkComponentState {
   displayedEntitiesCount: number;
 }
 
+// eslint-disable-next-line @typescript-eslint/naming-convention
 const LinkComponent = React.memo(
   class extends React.Component<LinkComponentProps, LinkComponentState> {
     loadMoreRef = createRef<HTMLDivElement>();
@@ -47,11 +49,7 @@ const LinkComponent = React.memo(
     }
 
     componentDidUpdate(prevProps: LinkComponentProps) {
-      if (
-        this.props.resetDisplayedEntitiesCount &&
-        this.props.resetDisplayedEntitiesCount !==
-          prevProps.resetDisplayedEntitiesCount
-      ) {
+      if (this.props.resetCounter !== prevProps.resetCounter) {
         this.setState({
           displayedEntitiesCount: this.props.initialDisplayedEntitiesCount,
         });
@@ -110,16 +108,24 @@ const LinkComponent = React.memo(
   }
 );
 
+// eslint-disable-next-line @typescript-eslint/naming-convention
 const PropertiesLinksListView = React.memo(
   class extends React.Component<PropertiesLinksListViewProps> {
+    private sectionKey(tagLink: PropertiesLinks): string {
+      const fileEntityKeys = tagLink.fileEntities
+        .map((fileEntity) => fileEntity.key())
+        .join("|");
+      return `${tagLink.key ?? ""}:${tagLink.property}:${fileEntityKeys}`;
+    }
+
     render(): JSX.Element {
       return (
         <div>
           {this.props.propertiesLinksList
             .slice(0, this.props.displayedSectionCount)
-            .map((tagLink, index) => (
+            .map((tagLink) => (
               <LinkComponent
-                key={index}
+                key={this.sectionKey(tagLink)}
                 tagLink={tagLink}
                 onClick={this.props.onClick}
                 getPreview={this.props.getPreview}
@@ -128,9 +134,7 @@ const PropertiesLinksListView = React.memo(
                 initialDisplayedEntitiesCount={
                   this.props.initialDisplayedEntitiesCount
                 }
-                resetDisplayedEntitiesCount={
-                  this.props.resetDisplayedEntitiesCount
-                }
+                resetCounter={this.props.resetCounter}
               />
             ))}
         </div>

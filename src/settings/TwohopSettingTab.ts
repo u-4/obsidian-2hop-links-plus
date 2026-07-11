@@ -20,6 +20,8 @@ export interface TwohopPluginSettings {
   excludeTags: string[];
   panePositionIsRight: boolean;
   createFilesForMultiLinked: boolean;
+  showFullPathInLinkCards: boolean;
+  includeBodyInCardSearch: boolean;
   frontmatterPropertyKeyAsTitle: string;
   frontmatterKeys: string[];
   [key: string]: boolean | string | string[] | number | undefined;
@@ -50,41 +52,28 @@ export class TwohopSettingTab extends PluginSettingTab {
         "panePositionIsRight"
       );
     }
-    this.createDropdownSetting(
-      "Sort Order",
-      "",
-      "sortOrder",
-      {
-        random: "Random",
-        filenameAsc: "File name (A to Z)",
-        filenameDesc: "File name (Z to A)",
-        modifiedDesc: "Modified time (new to old)",
-        modifiedAsc: "Modified time (old to new)",
-        createdDesc: "Created time (new to old)",
-        createdAsc: "Created time (old to new)",
-      }
-    );
+    this.createDropdownSetting("Sort Order", "", "sortOrder", {
+      random: "Random",
+      filenameAsc: "File name (A to Z)",
+      filenameDesc: "File name (Z to A)",
+      modifiedDesc: "Modified time (new to old)",
+      modifiedAsc: "Modified time (old to new)",
+      createdDesc: "Created time (new to old)",
+      createdAsc: "Created time (old to new)",
+      relatedScoreDesc: "Related score",
+      relatedCosenseLike: "Related, Cosense-like",
+      pageRankDesc: "Page rank",
+      mostLinkedDesc: "Most linked",
+    });
     this.createToggleSetting("Show Links", "", "showForwardConnectedLinks");
     this.createToggleSetting(
       "Show Back Links",
       "",
       "showBackwardConnectedLinks"
     );
-    this.createToggleSetting(
-      "Show 2Hop Links",
-      "",
-      "showTwohopLinks"
-    );
-    this.createToggleSetting(
-      "Show New Links",
-      "",
-      "showNewLinks"
-    );
-    this.createToggleSetting(
-      "Show Tags Links",
-      "",
-      "showTagsLinks"
-    );
+    this.createToggleSetting("Show 2Hop Links", "", "showTwohopLinks");
+    this.createToggleSetting("Show New Links", "", "showNewLinks");
+    this.createToggleSetting("Show Tags Links", "", "showTagsLinks");
     this.createToggleSetting(
       "Show Properties Links",
       "",
@@ -133,6 +122,16 @@ export class TwohopSettingTab extends PluginSettingTab {
       "Create Files For Multiple Linked",
       "Create new files for links that are connected to more than one other file.",
       "createFilesForMultiLinked"
+    );
+    this.createToggleSetting(
+      "Show full path in link cards",
+      "If true, link cards display the full linked path. If false, they display only the file name.",
+      "showFullPathInLinkCards"
+    );
+    this.createToggleSetting(
+      "Include body text in card search",
+      "If true, non-empty card searches can match the body text of candidate cards.",
+      "includeBodyInCardSearch"
     );
     this.createTextSettingStr(
       "Set frontmatter property key as title",

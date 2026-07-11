@@ -14,6 +14,14 @@ import {
   getTwoHopSortFunction,
 } from "./sort";
 import { PropertiesLinks } from "./model/PropertiesLinks";
+import {
+  buildGraphIndex,
+  calculateRelatedScores,
+  chooseIntermediateForScore,
+  GraphIndex,
+  isRankingSortOrder,
+  RelatedCandidateScore,
+} from "./ranking";
 
 export class Links {
   app: App;
@@ -22,6 +30,184 @@ export class Links {
   constructor(app: App, settings: any) {
     this.app = app;
     this.settings = settings;
+  }
+
+  private applyRankingFields(
+    entity: FileEntity,
+    targetPath: string | null | undefined,
+    graphIndex?: GraphIndex,
+    relatedScores?: Map<string, RelatedCandidateScore>,
+    activePath?: string,
+    orderPath?: string
+  ): FileEntity {
+    if (targetPath) {
+      entity.targetPath = targetPath;
+    }
+
+    if (!targetPath || !graphIndex) {
+      return entity;
+    }
+
+    const score = relatedScores?.get(targetPath);
+    entity.relatedScore = score?.relatedScore ?? entity.relatedScore;
+    entity.pageRank =
+      score?.pageRank ?? graphIndex.pageRank.get(targetPath) ?? entity.pageRank;
+    entity.inDegree =
+      score?.inDegree ?? graphIndex.inDegree.get(targetPath) ?? entity.inDegree;
+    entity.sharedLinks = score?.sharedLinks ?? entity.sharedLinks;
+
+    if (activePath) {
+      const orderIndex = graphIndex.orderIndex.get(activePath);
+      const pathForOrder = orderPath ?? targetPath;
+      entity.activeLinkOrder = orderIndex?.get(pathForOrder);
+    }
+
+    return entity;
+  }
+
+  private getSectionScores(
+    fileEntities: FileEntity[],
+    activeLinkOrder?: number
+  ) {
+    const topRelatedScores = fileEntities
+      .map((entity) => entity.relatedScore ?? 0)
+      .sort((a, b) => b - a)
+      .slice(0, 5);
+    const relatedScore = topRelatedScores.reduce(
+      (sum, value) => sum + value,
+      0
+    );
+    const pageRank = Math.max(
+      0,
+      ...fileEntities.map((entity) => entity.pageRank ?? 0)
+    );
+    const inDegree = Math.max(
+      0,
+      ...fileEntities.map((entity) => entity.inDegree ?? 0)
+    );
+
+    return {
+      relatedScore,
+      pageRank,
+      inDegree,
+      activeLinkOrder,
+    };
+  }
+
+  private hasKnownEntity(set: Set<string>, path: string): boolean {
+    const linkText = filePathToLinkText(path);
+    return (
+      set.has(removeBlockReference(path)) ||
+      set.has(removeBlockReference(linkText))
+    );
+  }
+
+  private collectTargetPaths(
+    forwardLinks: FileEntity[],
+    newLinks: FileEntity[],
+    backwardLinks: FileEntity[],
+    twoHopLinks: TwohopLink[],
+    tagLinksList: PropertiesLinks[],
+    frontmatterKeyLinksList: PropertiesLinks[]
+  ): string[] {
+    const paths = new Set<string>();
+    const addEntity = (entity: FileEntity) => {
+      if (entity.targetPath) paths.add(entity.targetPath);
+      if (entity.targetPathToReveal) paths.add(entity.targetPathToReveal);
+    };
+
+    [...forwardLinks, ...newLinks, ...backwardLinks].forEach(addEntity);
+
+    for (const twoHopLink of twoHopLinks) {
+      addEntity(twoHopLink.link);
+      twoHopLink.fileEntities.forEach(addEntity);
+    }
+
+    for (const propertiesLinks of [
+      ...tagLinksList,
+      ...frontmatterKeyLinksList,
+    ]) {
+      propertiesLinks.fileEntities.forEach(addEntity);
+    }
+
+    return Array.from(paths);
+  }
+
+  private applyRankingFieldsToCollections(
+    activePath: string,
+    graphIndex: GraphIndex,
+    relatedScores: Map<string, RelatedCandidateScore>,
+    forwardLinks: FileEntity[],
+    newLinks: FileEntity[],
+    backwardLinks: FileEntity[],
+    twoHopLinks: TwohopLink[],
+    tagLinksList: PropertiesLinks[],
+    frontmatterKeyLinksList: PropertiesLinks[]
+  ): void {
+    const apply = (entity: FileEntity) => {
+      this.applyRankingFields(
+        entity,
+        entity.targetPath,
+        graphIndex,
+        relatedScores,
+        activePath,
+        entity.targetPathToReveal ?? entity.targetPath
+      );
+    };
+
+    [...forwardLinks, ...newLinks, ...backwardLinks].forEach(apply);
+
+    for (const twoHopLink of twoHopLinks) {
+      apply(twoHopLink.link);
+      twoHopLink.fileEntities.forEach(apply);
+    }
+
+    for (const propertiesLinks of [
+      ...tagLinksList,
+      ...frontmatterKeyLinksList,
+    ]) {
+      propertiesLinks.fileEntities.forEach(apply);
+    }
+  }
+
+  private async sortFileEntityCollections(
+    forwardLinks: FileEntity[],
+    backwardLinks: FileEntity[],
+    tagLinksList: PropertiesLinks[],
+    frontmatterKeyLinksList: PropertiesLinks[]
+  ): Promise<void> {
+    const sortEntityPath = (entity: FileEntity) =>
+      entity.targetPath ?? entity.sourcePath;
+
+    forwardLinks.splice(
+      0,
+      forwardLinks.length,
+      ...(await this.getSortedFileEntities(
+        forwardLinks,
+        sortEntityPath,
+        this.settings.sortOrder
+      ))
+    );
+    backwardLinks.splice(
+      0,
+      backwardLinks.length,
+      ...(await this.getSortedFileEntities(
+        backwardLinks,
+        sortEntityPath,
+        this.settings.sortOrder
+      ))
+    );
+
+    for (const propertiesLinks of [
+      ...tagLinksList,
+      ...frontmatterKeyLinksList,
+    ]) {
+      propertiesLinks.fileEntities = await this.getSortedFileEntities(
+        propertiesLinks.fileEntities,
+        sortEntityPath,
+        this.settings.sortOrder
+      );
+    }
   }
 
   async gatherTwoHopLinks(activeFile: TFile | null): Promise<{
@@ -40,21 +226,33 @@ export class Links {
     let frontmatterKeyLinksList: PropertiesLinks[] = [];
 
     if (activeFile) {
-      const activeFileCache: CachedMetadata =
+      const useRanking =
+        activeFile.extension !== "canvas" &&
+        isRankingSortOrder(this.settings.sortOrder);
+      const graphIndex = useRanking
+        ? buildGraphIndex(this.app, this.settings)
+        : undefined;
+      const activeFileCache: CachedMetadata | null =
         this.app.metadataCache.getFileCache(activeFile);
       ({ resolved: forwardLinks, new: newLinks } = await this.getForwardLinks(
         activeFile,
-        activeFileCache
+        activeFileCache,
+        graphIndex
       ));
       const seenLinkSet = new Set<string>(forwardLinks.map((it) => it.key()));
-      backwardLinks = await this.getBackLinks(activeFile, seenLinkSet);
+      backwardLinks = await this.getBackLinks(
+        activeFile,
+        seenLinkSet,
+        graphIndex
+      );
       backwardLinks.forEach((link) => seenLinkSet.add(link.key()));
       const twoHopLinkSet = new Set<string>();
       twoHopLinks = await this.getTwohopLinks(
         activeFile,
         this.app.metadataCache.resolvedLinks,
         seenLinkSet,
-        twoHopLinkSet
+        twoHopLinkSet,
+        graphIndex
       );
 
       tagLinksList = await this.getLinksListOfFilesWithTags(
@@ -71,6 +269,38 @@ export class Links {
           seenLinkSet,
           twoHopLinkSet
         );
+
+      if (graphIndex) {
+        const relatedScores = calculateRelatedScores(
+          activeFile.path,
+          this.collectTargetPaths(
+            forwardLinks,
+            newLinks,
+            backwardLinks,
+            twoHopLinks,
+            tagLinksList,
+            frontmatterKeyLinksList
+          ),
+          graphIndex
+        );
+        this.applyRankingFieldsToCollections(
+          activeFile.path,
+          graphIndex,
+          relatedScores,
+          forwardLinks,
+          newLinks,
+          backwardLinks,
+          twoHopLinks,
+          tagLinksList,
+          frontmatterKeyLinksList
+        );
+        await this.sortFileEntityCollections(
+          forwardLinks,
+          backwardLinks,
+          tagLinksList,
+          frontmatterKeyLinksList
+        );
+      }
     } else {
       const allMarkdownFiles = this.app.vault
         .getMarkdownFiles()
@@ -99,7 +329,9 @@ export class Links {
 
   async getForwardLinks(
     activeFile: TFile,
-    activeFileCache: CachedMetadata
+    activeFileCache: CachedMetadata | null,
+    graphIndex?: GraphIndex,
+    relatedScores?: Map<string, RelatedCandidateScore>
   ): Promise<{ resolved: FileEntity[]; new: FileEntity[] }> {
     const resolvedLinks: FileEntity[] = [];
     const newLinks: FileEntity[] = [];
@@ -108,13 +340,13 @@ export class Links {
       activeFileCache != null &&
       (activeFileCache.links != null ||
         activeFileCache.embeds != null ||
-        activeFileCache.frontmatterLinks != null)
+        (activeFileCache as any).frontmatterLinks != null)
     ) {
       const seen = new Set<string>();
       const linkEntities = [
         ...(activeFileCache.links || []),
         ...(activeFileCache.embeds || []),
-        ...(activeFileCache.frontmatterLinks || []),
+        ...(((activeFileCache as any).frontmatterLinks as any[]) || []),
       ];
 
       for (const it of linkEntities) {
@@ -134,7 +366,21 @@ export class Links {
           }
 
           if (targetFile) {
-            resolvedLinks.push(new FileEntity(targetFile.path, key));
+            resolvedLinks.push(
+              this.applyRankingFields(
+                new FileEntity(
+                  targetFile.path,
+                  key,
+                  undefined,
+                  targetFile.path
+                ),
+                targetFile.path,
+                graphIndex,
+                relatedScores,
+                activeFile.path,
+                targetFile.path
+              )
+            );
           } else {
             const backlinksCount = await this.getBacklinksCount(
               key,
@@ -183,7 +429,21 @@ export class Links {
                 targetFile &&
                 !shouldExcludePath(targetFile.path, this.settings.excludePaths)
               ) {
-                resolvedLinks.push(new FileEntity(targetFile.path, key));
+                resolvedLinks.push(
+                  this.applyRankingFields(
+                    new FileEntity(
+                      targetFile.path,
+                      key,
+                      undefined,
+                      targetFile.path
+                    ),
+                    targetFile.path,
+                    graphIndex,
+                    relatedScores,
+                    activeFile.path,
+                    targetFile.path
+                  )
+                );
               } else {
                 newLinks.push(new FileEntity(activeFile.path, key));
               }
@@ -225,7 +485,9 @@ export class Links {
 
   async getBackLinks(
     activeFile: TFile,
-    forwardLinkSet: Set<string>
+    forwardLinkSet: Set<string>,
+    graphIndex?: GraphIndex,
+    relatedScores?: Map<string, RelatedCandidateScore>
   ): Promise<FileEntity[]> {
     const name = activeFile.path;
     const resolvedLinks: Record<string, Record<string, number>> = this.app
@@ -240,11 +502,20 @@ export class Links {
           const linkText = filePathToLinkText(src);
           if (
             this.settings.enableDuplicateRemoval &&
-            forwardLinkSet.has(linkText)
+            this.hasKnownEntity(forwardLinkSet, src)
           ) {
             continue;
           }
-          backLinkEntities.push(new FileEntity(src, linkText));
+          backLinkEntities.push(
+            this.applyRankingFields(
+              new FileEntity(src, linkText, activeFile.path, src),
+              src,
+              graphIndex,
+              relatedScores,
+              activeFile.path,
+              src
+            )
+          );
         }
       }
     }
@@ -274,8 +545,22 @@ export class Links {
         for (const node of canvasData.nodes) {
           if (node.type === "file" && node.file === activeFile.path) {
             const linkText = filePathToLinkText(canvasFile.path);
-            if (!forwardLinkSet.has(linkText)) {
-              backLinkEntities.push(new FileEntity(canvasFile.path, linkText));
+            if (!this.hasKnownEntity(forwardLinkSet, canvasFile.path)) {
+              backLinkEntities.push(
+                this.applyRankingFields(
+                  new FileEntity(
+                    canvasFile.path,
+                    linkText,
+                    activeFile.path,
+                    canvasFile.path
+                  ),
+                  canvasFile.path,
+                  graphIndex,
+                  relatedScores,
+                  activeFile.path,
+                  canvasFile.path
+                )
+              );
             }
           }
         }
@@ -293,8 +578,19 @@ export class Links {
     activeFile: TFile,
     links: Record<string, Record<string, number>>,
     forwardLinkSet: Set<string>,
-    twoHopLinkSet: Set<string>
+    twoHopLinkSet: Set<string>,
+    graphIndex?: GraphIndex,
+    relatedScores?: Map<string, RelatedCandidateScore>
   ): Promise<TwohopLink[]> {
+    if (graphIndex && isRankingSortOrder(this.settings.sortOrder)) {
+      return this.getRankedTwohopLinks(
+        activeFile,
+        forwardLinkSet,
+        twoHopLinkSet,
+        graphIndex
+      );
+    }
+
     const twoHopLinks: Record<string, FileEntity[]> = {};
     const twohopLinkList = await this.aggregate2hopLinks(activeFile, links);
 
@@ -302,7 +598,7 @@ export class Links {
       return [];
     }
 
-    let seenLinks = new Set<string>();
+    const seenLinks = new Set<string>();
 
     if (twohopLinkList) {
       for (const k of Object.keys(twohopLinkList)) {
@@ -313,14 +609,20 @@ export class Links {
               const linkText = filePathToLinkText(it);
               if (
                 this.settings.enableDuplicateRemoval &&
-                (forwardLinkSet.has(removeBlockReference(linkText)) ||
-                  seenLinks.has(linkText))
+                (this.hasKnownEntity(forwardLinkSet, it) || seenLinks.has(it))
               ) {
                 return null;
               }
-              seenLinks.add(linkText);
-              twoHopLinkSet.add(linkText);
-              return new FileEntity(activeFile.path, linkText);
+              seenLinks.add(it);
+              twoHopLinkSet.add(it);
+              return this.applyRankingFields(
+                new FileEntity(activeFile.path, linkText, k, it, k),
+                it,
+                graphIndex,
+                relatedScores,
+                activeFile.path,
+                k
+              );
             })
             .filter((it) => it);
         }
@@ -370,7 +672,14 @@ export class Links {
               );
 
               return {
-                link: new FileEntity(activeFile.path, path),
+                link: this.applyRankingFields(
+                  new FileEntity(activeFile.path, path, undefined, path),
+                  path,
+                  graphIndex,
+                  relatedScores,
+                  activeFile.path,
+                  path
+                ),
                 fileEntities: sortedFileEntities,
               };
             }
@@ -403,6 +712,123 @@ export class Links {
             it!.twoHopLinkEntity.fileEntities
           )
       )
+      .filter((it) => it.fileEntities.length > 0);
+  }
+
+  async getRankedTwohopLinks(
+    activeFile: TFile,
+    forwardLinkSet: Set<string>,
+    twoHopLinkSet: Set<string>,
+    graphIndex: GraphIndex
+  ): Promise<TwohopLink[]> {
+    const activeOut = graphIndex.out.get(activeFile.path) ?? new Set<string>();
+    const candidatePaths: string[] = [];
+
+    for (const intermediatePath of activeOut) {
+      if (shouldExcludePath(intermediatePath, this.settings.excludePaths)) {
+        continue;
+      }
+
+      for (const candidatePath of graphIndex.in.get(intermediatePath) ?? []) {
+        if (candidatePath === activeFile.path) continue;
+        if (shouldExcludePath(candidatePath, this.settings.excludePaths)) {
+          continue;
+        }
+        candidatePaths.push(candidatePath);
+      }
+    }
+
+    const uniqueCandidatePaths = Array.from(new Set(candidatePaths));
+    const relatedScores = calculateRelatedScores(
+      activeFile.path,
+      uniqueCandidatePaths,
+      graphIndex
+    );
+    const groupedEntities = new Map<string, FileEntity[]>();
+    const seenCandidatePaths = new Set<string>();
+
+    for (const candidatePath of uniqueCandidatePaths) {
+      const score = relatedScores.get(candidatePath);
+      if (!score || score.sharedLinks.length === 0) continue;
+
+      const linkText = filePathToLinkText(candidatePath);
+
+      if (
+        this.settings.enableDuplicateRemoval &&
+        (this.hasKnownEntity(forwardLinkSet, candidatePath) ||
+          seenCandidatePaths.has(candidatePath))
+      ) {
+        continue;
+      }
+
+      const sectionPaths = this.settings.enableDuplicateRemoval
+        ? [chooseIntermediateForScore(score, this.settings.sortOrder)]
+        : score.sharedLinks;
+
+      for (const sectionPath of sectionPaths) {
+        if (!sectionPath) continue;
+
+        const entity = this.applyRankingFields(
+          new FileEntity(
+            activeFile.path,
+            linkText,
+            sectionPath,
+            candidatePath,
+            sectionPath
+          ),
+          candidatePath,
+          graphIndex,
+          relatedScores,
+          activeFile.path,
+          sectionPath
+        );
+
+        groupedEntities.set(
+          sectionPath,
+          groupedEntities.get(sectionPath) ?? []
+        );
+        groupedEntities.get(sectionPath)!.push(entity);
+      }
+
+      seenCandidatePaths.add(candidatePath);
+      twoHopLinkSet.add(candidatePath);
+    }
+
+    const twoHopLinks: TwohopLink[] = [];
+
+    for (const [sectionPath, fileEntities] of groupedEntities) {
+      const sortedFileEntities = await this.getSortedFileEntities(
+        fileEntities,
+        (entity) => entity.targetPath ?? entity.sourcePath,
+        this.settings.sortOrder
+      );
+      const activeLinkOrder =
+        graphIndex.orderIndex.get(activeFile.path)?.get(sectionPath) ??
+        Number.MAX_SAFE_INTEGER;
+      const link = this.applyRankingFields(
+        new FileEntity(activeFile.path, sectionPath, undefined, sectionPath),
+        sectionPath,
+        graphIndex,
+        relatedScores,
+        activeFile.path,
+        sectionPath
+      );
+      const scores = this.getSectionScores(sortedFileEntities, activeLinkOrder);
+
+      twoHopLinks.push(new TwohopLink(link, sortedFileEntities, scores));
+    }
+
+    const twoHopLinkStats = twoHopLinks.map((twoHopLinkEntity) => {
+      const file = graphIndex.filesByPath.get(
+        twoHopLinkEntity.link.targetPath ?? twoHopLinkEntity.link.linkText
+      );
+      return { twoHopLinkEntity, stat: file?.stat };
+    });
+    const twoHopSortFunction = getTwoHopSortFunction(this.settings.sortOrder);
+    twoHopLinkStats.sort(twoHopSortFunction);
+
+    return twoHopLinkStats
+      .map((it) => it.twoHopLinkEntity)
       .filter((it) => it.fileEntities.length > 0);
   }
 
@@ -494,7 +920,7 @@ export class Links {
 
       const fileTags = this.getTagsFromCache(
         cachedMetadata,
-        this.settings.excludePaths
+        this.settings.excludeTags
       );
 
       for (const tag of fileTags) {
@@ -505,19 +931,22 @@ export class Links {
         if (
           this.settings.enableDuplicateRemoval &&
           (seen[markdownFile.path] ||
-            forwardLinkSet.has(filePathToLinkText(markdownFile.path)) ||
-            twoHopLinkSet.has(filePathToLinkText(markdownFile.path)))
+            this.hasKnownEntity(forwardLinkSet, markdownFile.path) ||
+            this.hasKnownEntity(twoHopLinkSet, markdownFile.path))
         )
           continue;
 
         const linkText = filePathToLinkText(markdownFile.path);
-        const newFileEntity = new FileEntity(activeFile.path, linkText);
+        const newFileEntity = new FileEntity(
+          activeFile.path,
+          linkText,
+          undefined,
+          markdownFile.path
+        );
 
         if (
           !tagMap[tag].some(
-            (existingEntity) =>
-              existingEntity.sourcePath === newFileEntity.sourcePath &&
-              existingEntity.linkText === newFileEntity.linkText
+            (existingEntity) => existingEntity.key() === newFileEntity.key()
           )
         ) {
           tagMap[tag].push(newFileEntity);
@@ -537,11 +966,11 @@ export class Links {
 
   async getLinksListOfFilesWithFrontmatterKeys(
     activeFile: TFile,
-    activeFileCache: CachedMetadata,
+    activeFileCache: CachedMetadata | null | undefined,
     forwardLinkSet: Set<string>,
     twoHopLinkSet: Set<string>
   ): Promise<PropertiesLinks[]> {
-    const activeFileFrontmatter = activeFileCache.frontmatter;
+    const activeFileFrontmatter = activeFileCache?.frontmatter;
     if (!activeFileFrontmatter) return [];
 
     const frontmatterKeyMap: Record<string, Record<string, FileEntity[]>> = {};
@@ -565,8 +994,8 @@ export class Links {
       for (const [key, value] of Object.entries(fileFrontmatter)) {
         if (!this.settings.frontmatterKeys.includes(key)) continue;
 
-        let values: string[] = [];
-        let activeValues: string[] = [];
+        const values: string[] = [];
+        const activeValues: string[] = [];
 
         if (typeof value === "string") {
           values.push(value);
@@ -613,15 +1042,20 @@ export class Links {
               if (
                 this.settings.enableDuplicateRemoval &&
                 (seen[markdownFile.path] ||
-                  forwardLinkSet.has(filePathToLinkText(markdownFile.path)) ||
-                  twoHopLinkSet.has(filePathToLinkText(markdownFile.path)))
+                  this.hasKnownEntity(forwardLinkSet, markdownFile.path) ||
+                  this.hasKnownEntity(twoHopLinkSet, markdownFile.path))
               ) {
                 continue;
               }
 
               const linkText = filePathToLinkText(markdownFile.path);
               frontmatterKeyMap[key][hierarchicalValue].push(
-                new FileEntity(activeFile.path, linkText)
+                new FileEntity(
+                  activeFile.path,
+                  linkText,
+                  undefined,
+                  markdownFile.path
+                )
               );
               seen[markdownFile.path] = true;
             }
@@ -649,13 +1083,13 @@ export class Links {
   async createPropertiesLinkEntities(
     settings: any,
     propertiesMap: Record<string, FileEntity[]>,
-    key: string = ""
+    key = ""
   ): Promise<PropertiesLinks[]> {
     const propertiesLinksEntitiesPromises = Object.entries(propertiesMap).map(
       async ([property, entities]) => {
         const sortedEntities = await this.getSortedFileEntities(
           entities,
-          (entity) => entity.sourcePath,
+          (entity) => entity.targetPath ?? entity.sourcePath,
           settings.sortOrder
         );
         if (sortedEntities.length === 0) {
@@ -675,7 +1109,7 @@ export class Links {
     cache: CachedMetadata | null | undefined,
     excludeTags: string[]
   ): string[] {
-    let tags: string[] = [];
+    const tags: string[] = [];
     if (cache) {
       if (cache.tags) {
         cache.tags.forEach((it) => {

@@ -4,7 +4,6 @@
 
 # npm
 node_modules
-package-lock.json
 
 # yarn
 yarn.lock
@@ -16,3 +15,8 @@ main.js
 # obsidian
 data.json
 src.zip
+
+# macOS / local work products
+.DS_Store
+review_bundle/
+review_bundle.zip

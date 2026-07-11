@@ -21,6 +21,7 @@ import { readPreview } from "./preview";
 import { getTitle } from "./getTitle";
 import { loadSettings } from "./settings/index";
 import { Links } from "./links";
+import { OpenPaneTarget } from "./types";
 
 const CONTAINER_CLASS = "twohop-links-container";
 export const HOVER_LINK_ID = "2hop-links";
@@ -32,6 +33,7 @@ export default class TwohopLinksPlugin extends Plugin {
 
   private previousLinks: string[] = [];
   private previousTags: string[] = [];
+  private renderGeneration = 0;
 
   async onload(): Promise<void> {
     console.debug("------ loading obsidian-twohop-links plugin");
@@ -62,6 +64,11 @@ export default class TwohopLinksPlugin extends Plugin {
         this.refreshTwohopLinks.bind(this)
       )
     );
+    this.registerEvent(
+      this.app.workspace.on("file-open", async () => {
+        await this.refreshTwohopLinks(this.app.workspace.activeLeaf);
+      })
+    );
     this.app.workspace.trigger("parse-style-settings");
 
     await this.renderTwohopLinks(true);
@@ -72,32 +79,167 @@ export default class TwohopLinksPlugin extends Plugin {
     console.log("unloading plugin");
   }
 
-  async refreshTwohopLinks() {
+  private shouldIgnoreActiveLeaf(leaf: WorkspaceLeaf | null): boolean {
+    if (!leaf) {
+      return false;
+    }
+
+    const leafAny = leaf as any;
+    const viewAny = leaf.view as any;
+    const containerEl = viewAny.containerEl ?? leafAny.containerEl;
+    const parentEl = containerEl?.parentElement;
+    const viewType =
+      typeof leaf.view.getViewType === "function"
+        ? leaf.view.getViewType()
+        : "";
+
+    if (viewType === "hover-editor" || viewType === "markdown-hover") {
+      return true;
+    }
+
+    if (
+      leafAny.hoverPopover ||
+      leafAny.isHoverPopover ||
+      viewAny.hoverPopover
+    ) {
+      return true;
+    }
+
+    if (containerEl?.closest?.(".hover-popover, .popover, .hover-editor")) {
+      return true;
+    }
+
+    if (parentEl?.closest?.(".hover-popover, .popover, .hover-editor")) {
+      return true;
+    }
+
+    return false;
+  }
+
+  async refreshTwohopLinks(leaf?: WorkspaceLeaf) {
+    if (this.shouldIgnoreActiveLeaf(leaf ?? null)) {
+      return;
+    }
+
     if (this.showLinksInMarkdown) {
       await this.renderTwohopLinks(true);
     }
   }
 
-  private async openFile(fileEntity: FileEntity): Promise<void> {
-    const linkText = removeBlockReference(fileEntity.linkText);
+  private getFileByPath(path: string): TFile | null {
+    const abstractFile = this.app.vault.getAbstractFileByPath(path);
+    return abstractFile instanceof TFile ? abstractFile : null;
+  }
+
+  private resolveFilePath(linkText: string, sourcePath: string): string | null {
+    const normalizedLinkText = removeBlockReference(linkText);
+    const resolvedFile = this.app.metadataCache.getFirstLinkpathDest(
+      normalizedLinkText,
+      sourcePath
+    );
+    if (resolvedFile) return resolvedFile.path;
+
+    return this.getFileByPath(normalizedLinkText)?.path ?? null;
+  }
+
+  private findLineOfLinkInFile(
+    file: TFile,
+    linkTextToReveal: string,
+    targetPathToReveal?: string
+  ): number | undefined {
+    const cache = this.app.metadataCache.getFileCache(file);
+    if (!cache) return undefined;
+
+    const linkToRevealPath =
+      targetPathToReveal != null
+        ? removeBlockReference(targetPathToReveal)
+        : this.resolveFilePath(linkTextToReveal, file.path);
+    const normalizedLinkTextToReveal = removeBlockReference(linkTextToReveal);
+    const references = [
+      ...(cache.links ?? []),
+      ...(cache.embeds ?? []),
+      ...(((cache as any).frontmatterLinks as any[]) ?? []),
+    ]
+      .slice()
+      .sort(
+        (a, b) =>
+          (a.position?.start?.offset ?? Number.MAX_SAFE_INTEGER) -
+          (b.position?.start?.offset ?? Number.MAX_SAFE_INTEGER)
+      );
+
+    for (const reference of references) {
+      const referenceLinkText = removeBlockReference(reference.link);
+      const referencePath = this.resolveFilePath(reference.link, file.path);
+      const line = reference.position?.start?.line;
+
+      if (line == null) {
+        continue;
+      }
+
+      if (linkToRevealPath && referencePath === linkToRevealPath) {
+        return line;
+      }
+
+      if (
+        referenceLinkText === normalizedLinkTextToReveal ||
+        referenceLinkText === removeBlockReference(linkToRevealPath ?? "")
+      ) {
+        return line;
+      }
+    }
+
+    return undefined;
+  }
+
+  private async openFile(
+    fileEntity: FileEntity,
+    newLeaf?: OpenPaneTarget
+  ): Promise<void> {
+    const linkText = removeBlockReference(
+      fileEntity.targetPath ?? fileEntity.linkText
+    );
 
     console.debug(
       `Open file: linkText='${linkText}', sourcePath='${fileEntity.sourcePath}'`
     );
-    const file = this.app.metadataCache.getFirstLinkpathDest(
-      linkText,
-      fileEntity.sourcePath
-    );
+    const file =
+      fileEntity.targetPath != null
+        ? this.getFileByPath(fileEntity.targetPath)
+        : this.app.metadataCache.getFirstLinkpathDest(
+            linkText,
+            fileEntity.sourcePath
+          );
     if (file == null) {
       if (!confirm(`Create new file: ${linkText}?`)) {
         console.log("Canceled!!");
         return;
       }
     }
-    return this.app.workspace.openLinkText(
-      fileEntity.linkText,
-      fileEntity.sourcePath
+
+    const line =
+      file && fileEntity.linkTextToReveal
+        ? this.findLineOfLinkInFile(
+            file,
+            fileEntity.linkTextToReveal,
+            fileEntity.targetPathToReveal
+          )
+        : undefined;
+
+    await this.app.workspace.openLinkText(
+      fileEntity.targetPath ?? fileEntity.linkText,
+      fileEntity.sourcePath,
+      newLeaf as any,
+      line != null ? { eState: { line } } : undefined
     );
+
+    const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
+    if (file && line != null && activeView?.file?.path === file.path) {
+      activeView.editor?.setCursor({ line, ch: 0 });
+      activeView.editor?.scrollIntoView(
+        { from: { line, ch: 0 }, to: { line, ch: 0 } },
+        80
+      );
+    }
   }
 
   async updateTwoHopLinksView() {
@@ -181,6 +323,7 @@ export default class TwohopLinksPlugin extends Plugin {
     if (!activeFile) {
       return;
     }
+    const generation = ++this.renderGeneration;
 
     const currentLinks = this.getActiveFileLinks(activeFile);
     const currentTags = this.getActiveFileTags(activeFile);
@@ -198,6 +341,14 @@ export default class TwohopLinksPlugin extends Plugin {
         tagLinksList,
         frontmatterKeyLinksList,
       } = await this.links.gatherTwoHopLinks(activeFile);
+
+      const currentActiveFile = this.app.workspace.getActiveFile();
+      if (
+        generation !== this.renderGeneration ||
+        currentActiveFile?.path !== activeFile.path
+      ) {
+        return;
+      }
 
       for (const container of this.getContainerElements(markdownView)) {
         await this.injectTwohopLinks(
@@ -250,6 +401,7 @@ export default class TwohopLinksPlugin extends Plugin {
         showTagsLinks={showTagsLinks}
         showPropertiesLinks={showPropertiesLinks}
         autoLoadTwoHopLinks={this.settings.autoLoadTwoHopLinks}
+        includeBodyInCardSearch={this.settings.includeBodyInCardSearch}
         initialBoxCount={this.settings.initialBoxCount}
         initialSectionCount={this.settings.initialSectionCount}
       />,

@@ -1,12 +1,13 @@
 import React from "react";
 import { FileEntity } from "../model/FileEntity";
 import { removeBlockReference } from "../utils";
-import { App, Menu, HoverParent, HoverPopover, WorkspaceLeaf } from "obsidian";
+import { App, Menu, HoverParent, HoverPopover } from "obsidian";
 import { HOVER_LINK_ID } from "../main";
+import { OpenPaneTarget } from "../types";
 
 interface LinkViewProps {
   fileEntity: FileEntity;
-  onClick: (fileEntity: FileEntity) => Promise<void>;
+  onClick: (fileEntity: FileEntity, newLeaf?: OpenPaneTarget) => Promise<void>;
   getPreview: (fileEntity: FileEntity, signal: AbortSignal) => Promise<string>;
   getTitle: (fileEntity: FileEntity, signal: AbortSignal) => Promise<string>;
   app: App;
@@ -24,7 +25,7 @@ export default class LinkView
   extends React.Component<LinkViewProps, LinkViewState>
   implements HoverParent
 {
-  private abortController: AbortController;
+  private abortController: AbortController | null = null;
   hoverPopover: HoverPopover | null;
   isMobile: boolean;
 
@@ -41,37 +42,62 @@ export default class LinkView
   }
 
   async componentDidMount(): Promise<void> {
-    this.abortController = new AbortController();
-    const preview = await this.props.getPreview(
-      this.props.fileEntity,
-      this.abortController.signal
-    );
-    const title = await this.props.getTitle(
-      this.props.fileEntity,
-      this.abortController.signal
-    )
-    if (!this.abortController.signal.aborted) {
-      this.setState({
-        preview: preview,
-        title: title
-      });
+    await this.loadPreviewAndTitle();
+  }
+
+  async componentDidUpdate(prevProps: LinkViewProps): Promise<void> {
+    if (this.fileEntityKey(prevProps.fileEntity) !== this.fileEntityKey()) {
+      await this.loadPreviewAndTitle();
     }
   }
 
   componentWillUnmount() {
-    this.abortController.abort();
+    this.abortController?.abort();
   }
 
-  async openFileWithOptions(options?: "tab" | "split" | "window") {
-    const { app, fileEntity } = this.props;
-    const file = app.metadataCache.getFirstLinkpathDest(
-      removeBlockReference(fileEntity.linkText),
+  private fileEntityKey(fileEntity = this.props.fileEntity): string {
+    return `${fileEntity.targetPath ?? ""}\n${fileEntity.linkText}\n${
       fileEntity.sourcePath
-    );
-    let leaf: WorkspaceLeaf;
-    leaf = app.workspace.getLeaf(options);
+    }`;
+  }
 
-    await leaf.openFile(file);
+  private async loadPreviewAndTitle(): Promise<void> {
+    this.abortController?.abort();
+    const abortController = new AbortController();
+    this.abortController = abortController;
+    const fileEntityKey = this.fileEntityKey();
+    this.setState({ preview: null, title: null });
+    const preview = await this.props.getPreview(
+      this.props.fileEntity,
+      abortController.signal
+    );
+    const title = await this.props.getTitle(
+      this.props.fileEntity,
+      abortController.signal
+    );
+    if (
+      !abortController.signal.aborted &&
+      fileEntityKey === this.fileEntityKey()
+    ) {
+      this.setState({
+        preview: preview,
+        title: title,
+      });
+    }
+  }
+
+  async openFileWithOptions(options?: OpenPaneTarget) {
+    await this.props.onClick(this.props.fileEntity, options);
+  }
+
+  private hoverLinkText(): string {
+    return removeBlockReference(
+      this.props.fileEntity.targetPath ?? this.props.fileEntity.linkText
+    );
+  }
+
+  private draggedWikiLinkText(): string {
+    return this.hoverLinkText().replace(/\.md$/i, "");
   }
 
   handleContextMenu = (event: React.MouseEvent | React.TouchEvent) => {
@@ -87,7 +113,7 @@ export default class LinkView
         ? event.changedTouches[0].clientY
         : event.clientY;
 
-    const menu = new Menu();
+    const menu = new Menu(this.props.app);
 
     menu.addItem((item) =>
       item.setTitle("Open link").onClick(async () => {
@@ -126,7 +152,7 @@ export default class LinkView
       source: HOVER_LINK_ID,
       hoverParent: this,
       targetEl,
-      linktext: this.props.fileEntity.linkText,
+      linktext: this.hoverLinkText(),
       sourcePath: this.props.fileEntity.sourcePath,
     });
   };
@@ -176,15 +202,13 @@ export default class LinkView
         onMouseOver={this.onMouseOver}
         draggable="true"
         onDragStart={(event) => {
-          const fileEntityLinkText = removeBlockReference(
-            this.props.fileEntity.linkText
+          event.dataTransfer.setData(
+            "text/plain",
+            `[[${this.draggedWikiLinkText()}]]`
           );
-          event.dataTransfer.setData("text/plain", `[[${fileEntityLinkText}]]`);
         }}
       >
-        <div className="twohop-links-box-title">
-          {this.state.title}
-        </div>
+        <div className="twohop-links-box-title">{this.state.title}</div>
         <div className={"twohop-links-box-preview"}>
           {this.state.preview &&
           this.state.preview.match(/^(app|https?):\/\//) ? (

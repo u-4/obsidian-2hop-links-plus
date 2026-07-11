@@ -35,6 +35,54 @@ export function getSortFunction(sortOrder: string) {
         a.stat && b.stat && a.stat.ctime && b.stat.ctime
           ? a.stat.ctime - b.stat.ctime
           : Math.random() - 0.5;
+    case "relatedScoreDesc":
+      return (a: any, b: any) =>
+        compareNumberDesc(
+          getEntityNumber(a, "relatedScore"),
+          getEntityNumber(b, "relatedScore")
+        ) ||
+        compareNumberDesc(
+          getEntityNumber(a, "pageRank"),
+          getEntityNumber(b, "pageRank")
+        ) ||
+        compareStatDesc(a, b, "mtime") ||
+        compareEntityTitleAsc(a, b);
+    case "relatedCosenseLike":
+      return (a: any, b: any) =>
+        compareNumberAsc(
+          getEntityNumber(a, "activeLinkOrder", Number.MAX_SAFE_INTEGER),
+          getEntityNumber(b, "activeLinkOrder", Number.MAX_SAFE_INTEGER)
+        ) ||
+        compareNumberDesc(
+          getEntityNumber(a, "relatedScore"),
+          getEntityNumber(b, "relatedScore")
+        ) ||
+        compareStatDesc(a, b, "mtime") ||
+        compareEntityTitleAsc(a, b);
+    case "pageRankDesc":
+      return (a: any, b: any) =>
+        compareNumberDesc(
+          getEntityNumber(a, "pageRank"),
+          getEntityNumber(b, "pageRank")
+        ) ||
+        compareNumberDesc(
+          getEntityNumber(a, "relatedScore"),
+          getEntityNumber(b, "relatedScore")
+        ) ||
+        compareStatDesc(a, b, "mtime") ||
+        compareEntityTitleAsc(a, b);
+    case "mostLinkedDesc":
+      return (a: any, b: any) =>
+        compareNumberDesc(
+          getEntityNumber(a, "inDegree"),
+          getEntityNumber(b, "inDegree")
+        ) ||
+        compareNumberDesc(
+          getEntityNumber(a, "pageRank"),
+          getEntityNumber(b, "pageRank")
+        ) ||
+        compareStatDesc(a, b, "mtime") ||
+        compareEntityTitleAsc(a, b);
   }
 }
 
@@ -64,6 +112,40 @@ export function getTwoHopSortFunction(sortOrder: string) {
       return (a: any, b: any) => b.stat.ctime - a.stat.ctime;
     case "createdAsc":
       return (a: any, b: any) => a.stat.ctime - b.stat.ctime;
+    case "relatedScoreDesc":
+      return (a: any, b: any) =>
+        compareNumberDesc(
+          getTwoHopNumber(a, "relatedScore"),
+          getTwoHopNumber(b, "relatedScore")
+        ) ||
+        compareStatDesc(a, b, "mtime") ||
+        compareTwoHopTitleAsc(a, b);
+    case "relatedCosenseLike":
+      return (a: any, b: any) =>
+        compareNumberAsc(
+          getTwoHopNumber(a, "activeLinkOrder", Number.MAX_SAFE_INTEGER),
+          getTwoHopNumber(b, "activeLinkOrder", Number.MAX_SAFE_INTEGER)
+        ) || compareTwoHopTitleAsc(a, b);
+    case "pageRankDesc":
+      return (a: any, b: any) =>
+        compareNumberDesc(
+          getTwoHopNumber(a, "pageRank"),
+          getTwoHopNumber(b, "pageRank")
+        ) ||
+        compareStatDesc(a, b, "mtime") ||
+        compareTwoHopTitleAsc(a, b);
+    case "mostLinkedDesc":
+      return (a: any, b: any) =>
+        compareNumberDesc(
+          getTwoHopNumber(a, "inDegree"),
+          getTwoHopNumber(b, "inDegree")
+        ) ||
+        compareNumberDesc(
+          getTwoHopNumber(a, "pageRank"),
+          getTwoHopNumber(b, "pageRank")
+        ) ||
+        compareStatDesc(a, b, "mtime") ||
+        compareTwoHopTitleAsc(a, b);
   }
 }
 
@@ -83,6 +165,11 @@ export function getSortFunctionForFile(sortOrder: string) {
       return (file: TFile) => -file.stat.ctime;
     case "createdAsc":
       return (file: TFile) => file.stat.ctime;
+    case "relatedScoreDesc":
+    case "relatedCosenseLike":
+    case "pageRankDesc":
+    case "mostLinkedDesc":
+      return (file: TFile) => -file.stat.mtime;
   }
 }
 
@@ -123,12 +210,68 @@ export function getTagHierarchySortFunction(sortOrder: string) {
       i++
     ) {
       if (aTagHierarchy[i] !== bTagHierarchy[i]) {
-        return sortFunction(aTagHierarchy[i], bTagHierarchy[i]);
+        return comparePropertyText(
+          sortFunction,
+          aTagHierarchy[i],
+          bTagHierarchy[i]
+        );
       }
     }
     if (aTagHierarchy.length !== bTagHierarchy.length) {
       return aTagHierarchy.length > bTagHierarchy.length ? -1 : 1;
     }
-    return sortFunction(a.property, b.property);
+    return comparePropertyText(sortFunction, a.property, b.property);
   };
+}
+
+function comparePropertyText(
+  sortFunction: ((a: any, b: any) => number) | undefined,
+  a: string,
+  b: string
+): number {
+  return sortFunction
+    ? sortFunction({ entity: { linkText: a } }, { entity: { linkText: b } })
+    : a.localeCompare(b);
+}
+
+function getEntityNumber(
+  item: any,
+  key: "relatedScore" | "pageRank" | "inDegree" | "activeLinkOrder",
+  fallback = 0
+): number {
+  const value = item?.entity?.[key] ?? item?.[key];
+  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
+
+function getTwoHopNumber(
+  item: any,
+  key: "relatedScore" | "pageRank" | "inDegree" | "activeLinkOrder",
+  fallback = 0
+): number {
+  const value = item?.twoHopLinkEntity?.[key] ?? item?.[key];
+  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
+
+function compareNumberDesc(a: number, b: number): number {
+  return b - a;
+}
+
+function compareNumberAsc(a: number, b: number): number {
+  return a - b;
+}
+
+function compareStatDesc(a: any, b: any, key: "mtime" | "ctime"): number {
+  return (b?.stat?.[key] ?? 0) - (a?.stat?.[key] ?? 0);
+}
+
+function compareEntityTitleAsc(a: any, b: any): number {
+  const aText = a?.entity?.linkText ?? a?.linkText ?? "";
+  const bText = b?.entity?.linkText ?? b?.linkText ?? "";
+  return aText.localeCompare(bText);
+}
+
+function compareTwoHopTitleAsc(a: any, b: any): number {
+  const aText = a?.twoHopLinkEntity?.link?.linkText ?? "";
+  const bText = b?.twoHopLinkEntity?.link?.linkText ?? "";
+  return aText.localeCompare(bText);
 }

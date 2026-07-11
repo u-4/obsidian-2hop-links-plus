@@ -7,8 +7,10 @@ import { Links } from "../links";
 export class SeparatePaneView extends ItemView {
   private plugin: TwohopLinksPlugin;
   private lastActiveLeaf: WorkspaceLeaf | undefined;
+  private lastMainFile: TFile | null = null;
   private previousLinks: string[] = [];
   private previousTags: string[] = [];
+  private renderGeneration = 0;
   links: Links;
 
   constructor(leaf: WorkspaceLeaf, plugin: TwohopLinksPlugin, links: Links) {
@@ -33,13 +35,14 @@ export class SeparatePaneView extends ItemView {
   async onOpen(): Promise<void> {
     try {
       this.lastActiveLeaf = this.app.workspace.getLeaf();
+      this.lastMainFile = this.app.workspace.getActiveFile();
       await this.updateOrForceUpdate(true);
 
       this.registerActiveFileUpdateEvent();
 
       this.registerEvent(
         this.app.metadataCache.on("changed", async (file: TFile) => {
-          if (file === this.app.workspace.getActiveFile()) {
+          if (file === this.lastMainFile) {
             await this.updateOrForceUpdate(false);
           }
         })
@@ -51,7 +54,7 @@ export class SeparatePaneView extends ItemView {
 
   async updateOrForceUpdate(isForceUpdate: boolean): Promise<void> {
     try {
-      const activeFile = this.app.workspace.getActiveFile();
+      const activeFile = this.lastMainFile;
       const currentLinks = this.getActiveFileLinks(activeFile);
       const currentTags = this.getActiveFileTags(activeFile);
 
@@ -61,6 +64,8 @@ export class SeparatePaneView extends ItemView {
         this.previousTags.sort().join(",") !== currentTags.sort().join(",") ||
         activeFile === null
       ) {
+        const generation = ++this.renderGeneration;
+        const activePath = activeFile?.path ?? null;
         const {
           forwardLinks,
           newLinks,
@@ -69,6 +74,13 @@ export class SeparatePaneView extends ItemView {
           tagLinksList,
           frontmatterKeyLinksList,
         } = await this.links.gatherTwoHopLinks(activeFile);
+
+        if (
+          generation !== this.renderGeneration ||
+          (this.lastMainFile?.path ?? null) !== activePath
+        ) {
+          return;
+        }
 
         ReactDOM.unmountComponentAtNode(this.containerEl);
         await this.plugin.injectTwohopLinks(
@@ -100,30 +112,98 @@ export class SeparatePaneView extends ItemView {
     );
   }
 
+  private shouldIgnoreActiveLeaf(leaf: WorkspaceLeaf | null): boolean {
+    if (!leaf || leaf.view === this) {
+      return true;
+    }
+
+    const leafAny = leaf as any;
+    const viewAny = leaf.view as any;
+    const containerEl = viewAny.containerEl ?? leafAny.containerEl;
+    const parentEl = containerEl?.parentElement;
+    const viewType =
+      typeof leaf.view.getViewType === "function"
+        ? leaf.view.getViewType()
+        : "";
+
+    if (viewType === "hover-editor" || viewType === "markdown-hover") {
+      return true;
+    }
+
+    if (
+      leafAny.hoverPopover ||
+      leafAny.isHoverPopover ||
+      viewAny.hoverPopover
+    ) {
+      return true;
+    }
+
+    if (containerEl?.closest?.(".hover-popover, .popover, .hover-editor")) {
+      return true;
+    }
+
+    if (parentEl?.closest?.(".hover-popover, .popover, .hover-editor")) {
+      return true;
+    }
+
+    return false;
+  }
+
+  private async updateActiveFileFromLeaf(
+    leaf: WorkspaceLeaf | null,
+    file?: TFile | null
+  ): Promise<void> {
+    if (this.shouldIgnoreActiveLeaf(leaf)) {
+      return;
+    }
+
+    const newActiveFile =
+      file ?? ((leaf?.view as any)?.file as TFile | null) ?? null;
+    if (!newActiveFile) {
+      return;
+    }
+
+    const newActiveFilePath = newActiveFile.path;
+    if ((this.lastMainFile?.path ?? null) !== newActiveFilePath) {
+      this.lastActiveLeaf = leaf ?? undefined;
+      this.lastMainFile = newActiveFile;
+      await this.updateOrForceUpdate(true);
+    }
+  }
+
   registerActiveFileUpdateEvent() {
-    let lastActiveFilePath: string | null = null;
+    let lastActiveFilePath: string | null = this.lastMainFile?.path ?? null;
 
     this.registerEvent(
       this.app.workspace.on(
         "active-leaf-change",
         async (leaf: WorkspaceLeaf) => {
-          if (leaf.view === this) {
-            return;
-          }
-
-          const newActiveFile = (leaf.view as any).file as TFile;
-          const newActiveFilePath = newActiveFile ? newActiveFile.path : null;
-
-          if (
-            lastActiveFilePath !== newActiveFilePath ||
-            newActiveFilePath === null
-          ) {
-            this.lastActiveLeaf = leaf;
-            lastActiveFilePath = newActiveFilePath;
-            await this.updateOrForceUpdate(true);
+          const previousFilePath = this.lastMainFile?.path ?? null;
+          await this.updateActiveFileFromLeaf(leaf);
+          if (previousFilePath !== (this.lastMainFile?.path ?? null)) {
+            lastActiveFilePath = this.lastMainFile?.path ?? null;
           }
         }
       )
+    );
+
+    this.registerEvent(
+      this.app.workspace.on("file-open", async (file: TFile | null) => {
+        const leaf = this.app.workspace.activeLeaf;
+        const activeFile = this.app.workspace.getActiveFile();
+        if (
+          file &&
+          activeFile?.path === file.path &&
+          !this.shouldIgnoreActiveLeaf(leaf) &&
+          lastActiveFilePath !== file.path
+        ) {
+          await this.updateActiveFileFromLeaf(leaf, file);
+          const newActiveFilePath = this.lastMainFile?.path ?? null;
+          if (lastActiveFilePath !== newActiveFilePath) {
+            lastActiveFilePath = newActiveFilePath;
+          }
+        }
+      })
     );
   }
 

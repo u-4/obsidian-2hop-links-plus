@@ -3,27 +3,27 @@ import { FileEntity } from "../model/FileEntity";
 import LinkView from "./LinkView";
 import { TwohopLink } from "../model/TwohopLink";
 import { App, setIcon } from "obsidian";
+import { OpenPaneTarget } from "../types";
 
 interface TwohopLinksViewProps {
-  
   twoHopLinks: TwohopLink[];
-  onClick: (fileEntity: FileEntity) => Promise<void>;
+  onClick: (fileEntity: FileEntity, newLeaf?: OpenPaneTarget) => Promise<void>;
   getPreview: (fileEntity: FileEntity) => Promise<string>;
   getTitle: (fileEntity: FileEntity) => Promise<string>;
   app: App;
   displayedSectionCount: number;
   initialDisplayedEntitiesCount: number;
-  resetDisplayedEntitiesCount: boolean;
+  resetCounter: number;
 }
 
 interface LinkComponentProps {
   link: TwohopLink;
-  onClick: (fileEntity: FileEntity) => Promise<void>;
+  onClick: (fileEntity: FileEntity, newLeaf?: OpenPaneTarget) => Promise<void>;
   getPreview: (fileEntity: FileEntity) => Promise<string>;
   getTitle: (fileEntity: FileEntity) => Promise<string>;
   app: App;
   initialDisplayedEntitiesCount: number;
-  resetDisplayedEntitiesCount: boolean;
+  resetCounter: number;
 }
 
 interface LinkComponentState {
@@ -36,12 +36,13 @@ class LinkComponent extends React.Component<
   LinkComponentState
 > {
   loadMoreRef = createRef<HTMLDivElement>();
+  private titleGeneration = 0;
 
   constructor(props: LinkComponentProps) {
     super(props);
     this.state = {
       displayedEntitiesCount: props.initialDisplayedEntitiesCount,
-      title: null
+      title: "",
     };
   }
 
@@ -50,26 +51,42 @@ class LinkComponent extends React.Component<
       setIcon(this.loadMoreRef.current, "more-horizontal");
     }
 
-    const title = await this.props.getTitle(this.props.link.link)
-
-    this.setState({
-      title: title
-    });
+    await this.updateTitle();
   }
 
-  componentDidUpdate(prevProps: LinkComponentProps) {
-    if (
-      this.props.resetDisplayedEntitiesCount &&
-      this.props.resetDisplayedEntitiesCount !==
-        prevProps.resetDisplayedEntitiesCount
-    ) {
+  async componentDidUpdate(prevProps: LinkComponentProps) {
+    if (this.props.resetCounter !== prevProps.resetCounter) {
       this.setState({
         displayedEntitiesCount: this.props.initialDisplayedEntitiesCount,
       });
     }
 
+    if (this.sectionKey(this.props.link) !== this.sectionKey(prevProps.link)) {
+      this.setState({
+        displayedEntitiesCount: this.props.initialDisplayedEntitiesCount,
+      });
+      await this.updateTitle();
+    }
+
     if (this.loadMoreRef.current) {
       setIcon(this.loadMoreRef.current, "more-horizontal");
+    }
+  }
+
+  private sectionKey(link: TwohopLink): string {
+    return link.link.targetPath ?? link.link.linkText;
+  }
+
+  private async updateTitle(): Promise<void> {
+    const expectedKey = this.sectionKey(this.props.link);
+    const generation = ++this.titleGeneration;
+    const title = await this.props.getTitle(this.props.link.link);
+
+    if (
+      generation === this.titleGeneration &&
+      expectedKey === this.sectionKey(this.props.link)
+    ) {
+      this.setState({ title });
     }
   }
 
@@ -101,7 +118,7 @@ class LinkComponent extends React.Component<
           .map((it) => (
             <LinkView
               fileEntity={it}
-              key={this.props.link.link.linkText + it.key()}
+              key={this.sectionKey(this.props.link) + it.key()}
               onClick={this.props.onClick}
               getPreview={this.props.getPreview}
               getTitle={this.props.getTitle}
@@ -121,17 +138,22 @@ class LinkComponent extends React.Component<
   }
 }
 
+// eslint-disable-next-line @typescript-eslint/naming-convention
 const MemoizedLinkComponent = React.memo(LinkComponent);
 
 class TwohopLinksView extends React.Component<TwohopLinksViewProps> {
+  private sectionKey(link: TwohopLink): string {
+    return link.link.targetPath ?? link.link.linkText;
+  }
+
   render(): JSX.Element {
     return (
       <div>
         {this.props.twoHopLinks
           .slice(0, this.props.displayedSectionCount)
-          .map((link, index) => (
+          .map((link) => (
             <MemoizedLinkComponent
-              key={index}
+              key={this.sectionKey(link)}
               link={link}
               onClick={this.props.onClick}
               getPreview={this.props.getPreview}
@@ -140,9 +162,7 @@ class TwohopLinksView extends React.Component<TwohopLinksViewProps> {
               initialDisplayedEntitiesCount={
                 this.props.initialDisplayedEntitiesCount
               }
-              resetDisplayedEntitiesCount={
-                this.props.resetDisplayedEntitiesCount
-              }
+              resetCounter={this.props.resetCounter}
             />
           ))}
       </div>

@@ -1,19 +1,120 @@
-# Obsidian 2Hop Links Plus
+# 2Hop Links Plus — Cosense-style community fork
 
-2Hop Links Plus is an [Obsidian](https://obsidian.md/) plugin that displays related links up to 2 hops away in a card format. This makes it easy to browse the connections between notes. Each card contains a preview of the corresponding note.
+[日本語](#日本語) | [English](#english)
 
-[![Image from Gyazo](https://i.gyazo.com/bf49c9e6314b4141215fd6f627e80da1.png)](https://gyazo.com/bf49c9e6314b4141215fd6f627e80da1)
-[![Image from Gyazo](https://i.gyazo.com/4947e25e5963b6d22b748ed3204b57b2.png)](https://gyazo.com/4947e25e5963b6d22b748ed3204b57b2)
+## 日本語
 
-> **Note**
-> This plugin is a fork of [tokuhirom/obsidian-2hop-links-plugin](https://github.com/tokuhirom/obsidian-2hop-links-plugin) and extends its functionality.
->
-> The main additional features are as follows:
->
-> - Automatic adjustment of box width
-> - Improved preview content
-> - Support for external link images
-> - Setting of exclusion paths
-> - Context menu (e.g., open in new tab)
-> - Sort of links
-> - Display in a separate pane
+このリポジトリは、Obsidian プラグイン
+[2Hop Links Plus](https://github.com/L7Cy/obsidian-2hop-links-plus) `0.37.0`
+を基にした、非公式のコミュニティ fork です。関連ノートをたどる操作を
+Cosense / Scrapbox に近づけるため、関連度順・PageRank 風の並び替え、カード検索、
+リンク元行へのジャンプなどを追加しています。
+
+### 主な追加機能
+
+- `Related score`、`Related, Cosense-like`、`Page rank`、`Most linked` の並び替え
+- タイトル、パス、別名、タグ、リンク、必要に応じて本文を対象にしたカード検索
+- 2-hop カードと Back Links カードから、該当リンク行へのジャンプ
+- WebP 画像と相対パス埋め込み画像のプレビュー改善
+- Hover Preview や Hover Editor に影響されないアクティブノート追従
+- 同名ノート、ピン留めタブ、非同期プレビューの安定性改善
+
+詳細は [実装履歴](docs/IMPLEMENTATION_HISTORY.md) と
+[既知の制約](docs/reviews/03_KNOWN_LIMITATIONS.md) を参照してください。
+
+### 公開状態と互換性
+
+これは元プロジェクトの公式リリースではありません。プラグイン ID
+`2hop-links-plus` を引き継ぐため、元の 2Hop Links Plus と同時にはインストールできず、
+置き換えとして動作します。導入前に既存プラグインフォルダをバックアップしてください。
+
+現在の公開候補版は `0.38.0` です。GitHub Release は、手動受入試験が完了してから
+作成します。
+
+### インストール
+
+リリース公開後は、リリースに添付された `main.js`、`manifest.json`、`styles.css`
+を Vault 内の次のフォルダへ配置します。
+
+```text
+.obsidian/plugins/2hop-links-plus/
+```
+
+既存版から置き換える場合は、先に同フォルダをバックアップし、3 ファイルを置き換えた後、
+Obsidian を再起動するかプラグインを再読み込みしてください。
+
+### 開発と確認
+
+```bash
+npm ci
+npm run build
+npm run eslint
+git diff --check
+```
+
+ビルドすると `main.js` が生成されます。手動確認は
+[受入試験](docs/specification/ACCEPTANCE_TESTS.md) と
+[テスト Vault の説明](test-vault/README_TEST_VAULT.md) に従ってください。
+
+## English
+
+This repository is an unofficial community fork of the Obsidian plugin
+[2Hop Links Plus](https://github.com/L7Cy/obsidian-2hop-links-plus) `0.37.0`.
+It adds Cosense/Scrapbox-inspired navigation, relevance and PageRank-like
+sorting, card search, link-line navigation, and several preview and tab-tracking
+fixes.
+
+### Highlights
+
+- `Related score`, `Related, Cosense-like`, `Page rank`, and `Most linked` sort modes
+- Card search across titles, paths, aliases, tags, links, and optionally note bodies
+- Jump from 2-hop and Back Links cards to the relevant link line
+- Better WebP and candidate-relative embedded-image previews
+- Active-note tracking that ignores Hover Preview and Hover Editor popups
+- Stability fixes for duplicate basenames, pinned tabs, and asynchronous previews
+
+See the [implementation history](docs/IMPLEMENTATION_HISTORY.md) and
+[known limitations](docs/reviews/03_KNOWN_LIMITATIONS.md) for details.
+
+### Status and compatibility
+
+This is not an official release of the upstream project. It intentionally keeps
+the `2hop-links-plus` plugin ID, so it replaces the upstream plugin rather than
+installing alongside it. Back up your existing plugin directory before trying it.
+
+The current public release candidate is `0.38.0`. A GitHub Release will be
+created after the manual acceptance checklist has been completed.
+
+### Installation
+
+After a release is published, copy its `main.js`, `manifest.json`, and
+`styles.css` assets into:
+
+```text
+.obsidian/plugins/2hop-links-plus/
+```
+
+When replacing an existing installation, back up that directory first, replace
+the three files, and then reload the plugin or restart Obsidian.
+
+### Development and validation
+
+```bash
+npm ci
+npm run build
+npm run eslint
+git diff --check
+```
+
+The build generates `main.js`. Follow the
+[acceptance tests](docs/specification/ACCEPTANCE_TESTS.md) and the
+[test-vault guide](test-vault/README_TEST_VAULT.md) for manual validation.
+
+## Attribution and license
+
+This project is derived from
+[L7Cy/obsidian-2hop-links-plus](https://github.com/L7Cy/obsidian-2hop-links-plus),
+which is itself a fork of
+[tokuhirom/obsidian-2hop-links-plugin](https://github.com/tokuhirom/obsidian-2hop-links-plugin).
+It is distributed under the [MIT License](LICENSE.md), with the original
+copyright notices preserved.

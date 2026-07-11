@@ -19,6 +19,8 @@ export const DEFAULT_SETTINGS: TwohopPluginSettings = {
   excludeTags: [],
   panePositionIsRight: false,
   createFilesForMultiLinked: false,
+  showFullPathInLinkCards: false,
+  includeBodyInCardSearch: true,
   frontmatterPropertyKeyAsTitle: "",
   frontmatterKeys: [],
 };
