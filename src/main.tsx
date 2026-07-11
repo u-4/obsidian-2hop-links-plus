@@ -248,7 +248,7 @@ export default class TwohopLinksPlugin extends Plugin {
       activeView.editor?.setCursor({ line, ch: 0 });
       activeView.editor?.scrollIntoView(
         { from: { line, ch: 0 }, to: { line, ch: 0 } },
-        80
+        true
       );
     }
   }

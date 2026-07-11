@@ -113,7 +113,7 @@ export default class LinkView
         ? event.changedTouches[0].clientY
         : event.clientY;
 
-    const menu = new Menu(this.props.app);
+    const menu = new Menu();
 
     menu.addItem((item) =>
       item.setTitle("Open link").onClick(async () => {
