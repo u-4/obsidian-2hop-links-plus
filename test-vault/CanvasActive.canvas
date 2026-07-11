@@ -1,0 +1,32 @@
+{
+  "nodes": [
+    {
+      "id": "rare-a",
+      "type": "file",
+      "file": "RareA.md",
+      "x": 0,
+      "y": 0,
+      "width": 400,
+      "height": 240
+    },
+    {
+      "id": "rare-b",
+      "type": "file",
+      "file": "RareB.md",
+      "x": 440,
+      "y": 0,
+      "width": 400,
+      "height": 240
+    },
+    {
+      "id": "direct-target",
+      "type": "file",
+      "file": "DirectTarget.md",
+      "x": 880,
+      "y": 0,
+      "width": 400,
+      "height": 240
+    }
+  ],
+  "edges": []
+}

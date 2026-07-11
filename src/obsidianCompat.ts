@@ -53,6 +53,8 @@ export function getRuntimeLeafFile(leaf: WorkspaceLeaf): TFile | null {
 }
 
 type RuntimeWorkspace = {
+  // Modern Obsidian accepts named pane targets. Older published type
+  // definitions exposed only a boolean, so keep the runtime contract here.
   openLinkText(
     linkText: string,
     sourcePath: string,

@@ -22,6 +22,15 @@
   temporary sort-order dropdown beside the card search box. The settings tab
   separately controls the default sort order used when a view is opened.
 
+## 0.39.1 maintenance
+
+- Removed all 114 legacy ESLint warnings by adding explicit types and isolating
+  compatibility with Obsidian runtime APIs.
+- Added runtime validation for saved sort values and Canvas file nodes.
+- Updated the Obsidian development API, esbuild, and ESLint toolchain.
+- Removed duplicate and unused development dependencies; `npm audit` now
+  reports zero known vulnerabilities.
+
 ## Review and testing
 
 - The implementation went through multiple external review and hardening rounds.

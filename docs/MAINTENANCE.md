@@ -15,9 +15,9 @@ npm run eslint
 git diff --check
 ```
 
-`npm run eslint` currently reports legacy warnings but must finish with zero
-errors. The build creates `main.js`, which remains ignored because it is a
-generated artifact.
+`npm run eslint` must finish with zero warnings and zero errors. `npm audit`
+must report no known dependency vulnerabilities. The build creates `main.js`,
+which remains ignored because it is a generated artifact.
 
 ## Manual acceptance
 
