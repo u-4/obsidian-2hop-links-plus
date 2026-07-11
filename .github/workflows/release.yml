@@ -32,6 +32,9 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Test
+        run: npm test
+
       - name: Validate
         run: |
           npm run eslint
@@ -41,7 +44,15 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" \
-            main.js manifest.json styles.css \
-            --title "$GITHUB_REF_NAME" \
-            --generate-notes
+          RELEASE_NOTES="docs/releases/$GITHUB_REF_NAME.md"
+          if [ -f "$RELEASE_NOTES" ]; then
+            gh release create "$GITHUB_REF_NAME" \
+              main.js manifest.json styles.css \
+              --title "$GITHUB_REF_NAME" \
+              --notes-file "$RELEASE_NOTES"
+          else
+            gh release create "$GITHUB_REF_NAME" \
+              main.js manifest.json styles.css \
+              --title "$GITHUB_REF_NAME" \
+              --generate-notes
+          fi

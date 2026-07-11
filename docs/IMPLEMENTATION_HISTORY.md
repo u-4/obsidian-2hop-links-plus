@@ -31,6 +31,24 @@
 - Removed duplicate and unused development dependencies; `npm audit` now
   reports zero known vulnerabilities.
 
+## 0.40.0 performance and startup coordination
+
+- Waits for the Obsidian workspace layout and a 1.5-second startup grace period
+  before the first 2-hop calculation. Later tab or metadata events cannot pull
+  that first calculation forward.
+- Coalesces rapid `active-leaf-change` and `file-open` events, with a configurable
+  tab-switch delay that defaults to 200 ms.
+- Reuses the graph index and recent per-note results, and builds active-note link
+  order only when needed. `Related, Cosense-like` skips unused PageRank work.
+- Cancels superseded gather work cooperatively and shares in-flight graph and
+  Canvas-index construction instead of starting duplicates.
+- Waits for Obsidian's `resolved` metadata event before rebuilding graph-backed
+  results after Markdown changes.
+- Caches the Canvas reverse-link index and avoids scanning Canvas files when
+  Canvas backlinks are hidden and the active file is Markdown.
+- Adds deterministic synthetic-Vault tests, a 3,000-note benchmark, and command
+  palette diagnostics for cache builds, hits, and cancellations.
+
 ## Review and testing
 
 - The implementation went through multiple external review and hardening rounds.

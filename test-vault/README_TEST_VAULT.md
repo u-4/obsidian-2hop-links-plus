@@ -25,6 +25,14 @@
 15. separate pane を有効にして `CanvasActive.canvas` を開き、Canvas 内のファイルノードがリンクとして扱われることを確認する。
 16. `Active.md` の Back Links に `CanvasBacklink.canvas` が現れることを確認する。
 17. `InvalidCanvasNodes.canvas` を開いてもプラグインが停止せず、空の結果として扱われることを確認する。
+18. `Tab switch calculation delay (ms)` を既定の `200` にし、複数のノートタブを
+    A → B → C のように素早く切り替える。最後に選択した C だけが表示対象になることを
+    確認する。
+19. コマンドパレットで `Reset performance statistics` を実行し、複数タブを往復した後、
+    `Show performance statistics` を実行する。同じ状態では Graph builds が増え続けず、
+    graph hits または result hits が増えることを確認する。
+20. Obsidian を再起動し、復元中の非選択タブが長時間「ファイルがありません」にならず、
+    他の起動時処理と同時に重い再計算が繰り返されないことを確認する。
 
 > 既存のVault内のサブフォルダへこの試験データをコピーする場合、Canvasの
 > `file` はVaultルートからのパスである必要があります。たとえば配置先が

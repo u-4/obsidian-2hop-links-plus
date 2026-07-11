@@ -15,21 +15,75 @@ import {
 } from "./sort";
 import { PropertiesLinks } from "./model/PropertiesLinks";
 import {
-  buildGraphIndex,
   calculateRelatedScores,
   chooseIntermediateForScore,
   GraphIndex,
   isRankingSortOrder,
+  prepareGraphOrderForPath,
   RelatedCandidateScore,
 } from "./ranking";
 import type { TwohopPluginSettings } from "./settings/TwohopSettingTab";
 import { getFrontmatterLinks } from "./obsidianCompat";
 import type { SortOrder } from "./settings/sortOptions";
+import { GraphIndexCache, GraphIndexCacheStats } from "./graphIndexCache";
+import {
+  CalculationCancelledError,
+  isCalculationCancelled,
+  MAX_RESULT_CACHE_ENTRIES,
+  RESULT_CACHE_TTL_MS,
+  throwIfCalculationCancelled,
+} from "./performance";
 
 type CanvasFileNode = {
   type: "file";
   file: string;
 };
+
+interface CanvasLinkIndex {
+  outByCanvas: Map<string, string[]>;
+  inByTarget: Map<string, string[]>;
+}
+
+export interface GatheredLinks {
+  forwardLinks: FileEntity[];
+  newLinks: FileEntity[];
+  backwardLinks: FileEntity[];
+  twoHopLinks: TwohopLink[];
+  tagLinksList: PropertiesLinks[];
+  frontmatterKeyLinksList: PropertiesLinks[];
+}
+
+export interface LinksPerformanceStats extends GraphIndexCacheStats {
+  resultComputations: number;
+  resultCacheHits: number;
+  joinedComputations: number;
+  gatherCancellations: number;
+  canvasIndexBuilds: number;
+  canvasIndexHits: number;
+  lastGatherMs: number;
+}
+
+interface CachedGatherResult {
+  createdAt: number;
+  result: GatheredLinks;
+}
+
+interface PendingGather {
+  key: string;
+  controller: AbortController;
+  promise: Promise<GatheredLinks>;
+}
+
+interface CachedCanvasIndex {
+  revision: number;
+  index: CanvasLinkIndex;
+}
+
+interface PendingCanvasIndex {
+  revision: number;
+  controller: AbortController;
+  promise: Promise<CanvasLinkIndex>;
+}
 
 function isCanvasFileNode(value: unknown): value is CanvasFileNode {
   if (typeof value !== "object" || value === null) {
@@ -62,10 +116,186 @@ function parseCanvasFileNodes(canvasContent: string): CanvasFileNode[] {
 export class Links {
   app: App;
   settings: TwohopPluginSettings;
+  private readonly graphIndexCache: GraphIndexCache;
+  private metadataRevision = 0;
+  private canvasRevision = 0;
+  private resultCache = new Map<string, CachedGatherResult>();
+  private pendingGather: PendingGather | null = null;
+  private cachedCanvasIndex: CachedCanvasIndex | null = null;
+  private pendingCanvasIndex: PendingCanvasIndex | null = null;
+  private resultComputations = 0;
+  private resultCacheHits = 0;
+  private joinedComputations = 0;
+  private gatherCancellations = 0;
+  private canvasIndexBuilds = 0;
+  private canvasIndexHits = 0;
+  private lastGatherMs = 0;
 
   constructor(app: App, settings: TwohopPluginSettings) {
     this.app = app;
     this.settings = settings;
+    this.graphIndexCache = new GraphIndexCache(app);
+  }
+
+  invalidateMetadataCaches(): void {
+    this.metadataRevision++;
+    this.graphIndexCache.invalidate();
+    this.resultCache.clear();
+    this.cancelActiveGather();
+  }
+
+  invalidateCanvasCaches(): void {
+    this.canvasRevision++;
+    this.cachedCanvasIndex = null;
+    this.pendingCanvasIndex?.controller.abort();
+    this.pendingCanvasIndex = null;
+    this.resultCache.clear();
+    this.cancelActiveGather();
+  }
+
+  cancelPendingCalculations(): void {
+    this.cancelActiveGather();
+    this.graphIndexCache.cancel();
+    this.pendingCanvasIndex?.controller.abort();
+    this.pendingCanvasIndex = null;
+  }
+
+  cancelActiveGather(): void {
+    this.pendingGather?.controller.abort();
+    this.pendingGather = null;
+  }
+
+  getPerformanceStats(): LinksPerformanceStats {
+    return {
+      ...this.graphIndexCache.getStats(),
+      resultComputations: this.resultComputations,
+      resultCacheHits: this.resultCacheHits,
+      joinedComputations: this.joinedComputations,
+      gatherCancellations: this.gatherCancellations,
+      canvasIndexBuilds: this.canvasIndexBuilds,
+      canvasIndexHits: this.canvasIndexHits,
+      lastGatherMs: this.lastGatherMs,
+    };
+  }
+
+  resetPerformanceStats(): void {
+    this.graphIndexCache.resetStats();
+    this.resultComputations = 0;
+    this.resultCacheHits = 0;
+    this.joinedComputations = 0;
+    this.gatherCancellations = 0;
+    this.canvasIndexBuilds = 0;
+    this.canvasIndexHits = 0;
+    this.lastGatherMs = 0;
+  }
+
+  private createGatherKey(activeFile: TFile | null): string {
+    const settingsKey = JSON.stringify({
+      sortOrder: this.settings.sortOrder,
+      excludePaths: Array.from(new Set(this.settings.excludePaths)).sort(),
+      excludeTags: Array.from(new Set(this.settings.excludeTags)).sort(),
+      frontmatterKeys: Array.from(
+        new Set(this.settings.frontmatterKeys)
+      ).sort(),
+      enableDuplicateRemoval: this.settings.enableDuplicateRemoval,
+      createFilesForMultiLinked: this.settings.createFilesForMultiLinked,
+      showBackwardConnectedLinks: this.settings.showBackwardConnectedLinks,
+      showTagsLinks: this.settings.showTagsLinks,
+      showPropertiesLinks: this.settings.showPropertiesLinks,
+    });
+    const fileKey = activeFile
+      ? `${activeFile.path}:${activeFile.stat.mtime}:${activeFile.stat.size}`
+      : "__all_files__";
+    return `${this.metadataRevision}:${this.canvasRevision}:${fileKey}:${settingsKey}`;
+  }
+
+  private getCachedGatherResult(key: string): GatheredLinks | null {
+    const cached = this.resultCache.get(key);
+    if (!cached) {
+      return null;
+    }
+    if (Date.now() - cached.createdAt > RESULT_CACHE_TTL_MS) {
+      this.resultCache.delete(key);
+      return null;
+    }
+
+    this.resultCache.delete(key);
+    this.resultCache.set(key, cached);
+    return cached.result;
+  }
+
+  private cacheGatherResult(key: string, result: GatheredLinks): void {
+    this.resultCache.set(key, { createdAt: Date.now(), result });
+    while (this.resultCache.size > MAX_RESULT_CACHE_ENTRIES) {
+      const oldestKey = this.resultCache.keys().next().value;
+      if (typeof oldestKey !== "string") break;
+      this.resultCache.delete(oldestKey);
+    }
+  }
+
+  private async getCanvasLinkIndex(): Promise<CanvasLinkIndex> {
+    if (this.cachedCanvasIndex?.revision === this.canvasRevision) {
+      this.canvasIndexHits++;
+      return this.cachedCanvasIndex.index;
+    }
+    if (this.pendingCanvasIndex?.revision === this.canvasRevision) {
+      this.canvasIndexHits++;
+      return this.pendingCanvasIndex.promise;
+    }
+
+    this.pendingCanvasIndex?.controller.abort();
+    const revision = this.canvasRevision;
+    const controller = new AbortController();
+    this.canvasIndexBuilds++;
+
+    const promise = (async (): Promise<CanvasLinkIndex> => {
+      const outByCanvas = new Map<string, string[]>();
+      const inByTargetSets = new Map<string, Set<string>>();
+      const canvasFiles = this.app.vault
+        .getFiles()
+        .filter((file) => file.extension === "canvas");
+
+      for (const canvasFile of canvasFiles) {
+        throwIfCalculationCancelled(controller.signal);
+        const content = await this.app.vault.read(canvasFile);
+        throwIfCalculationCancelled(controller.signal);
+        const targets = Array.from(
+          new Set(parseCanvasFileNodes(content).map((node) => node.file))
+        );
+        outByCanvas.set(canvasFile.path, targets);
+
+        for (const target of targets) {
+          const canvasPaths = inByTargetSets.get(target) ?? new Set<string>();
+          canvasPaths.add(canvasFile.path);
+          inByTargetSets.set(target, canvasPaths);
+        }
+      }
+
+      if (revision !== this.canvasRevision) {
+        throw new CalculationCancelledError();
+      }
+
+      const inByTarget = new Map<string, string[]>();
+      for (const [target, canvasPaths] of inByTargetSets) {
+        inByTarget.set(target, Array.from(canvasPaths));
+      }
+      return { outByCanvas, inByTarget };
+    })()
+      .then((index) => {
+        if (controller.signal.aborted || revision !== this.canvasRevision) {
+          throw new CalculationCancelledError();
+        }
+        this.cachedCanvasIndex = { revision, index };
+        return index;
+      })
+      .finally(() => {
+        if (this.pendingCanvasIndex?.promise === promise) {
+          this.pendingCanvasIndex = null;
+        }
+      });
+
+    this.pendingCanvasIndex = { revision, controller, promise };
+    return promise;
   }
 
   private applyRankingFields(
@@ -246,14 +476,59 @@ export class Links {
     }
   }
 
-  async gatherTwoHopLinks(activeFile: TFile | null): Promise<{
-    forwardLinks: FileEntity[];
-    newLinks: FileEntity[];
-    backwardLinks: FileEntity[];
-    twoHopLinks: TwohopLink[];
-    tagLinksList: PropertiesLinks[];
-    frontmatterKeyLinksList: PropertiesLinks[];
-  }> {
+  async gatherTwoHopLinks(activeFile: TFile | null): Promise<GatheredLinks> {
+    const key = this.createGatherKey(activeFile);
+    const shouldCacheResult = this.settings.sortOrder !== "random";
+    const cached = shouldCacheResult
+      ? this.getCachedGatherResult(key)
+      : null;
+    if (cached) {
+      if (this.pendingGather?.key !== key) {
+        this.cancelActiveGather();
+      }
+      this.resultCacheHits++;
+      return cached;
+    }
+
+    if (this.pendingGather?.key === key) {
+      this.joinedComputations++;
+      return this.pendingGather.promise;
+    }
+
+    this.cancelActiveGather();
+    const controller = new AbortController();
+    const startedAt = Date.now();
+    this.resultComputations++;
+
+    const promise = this.calculateTwoHopLinks(activeFile, controller.signal)
+      .then((result) => {
+        throwIfCalculationCancelled(controller.signal);
+        this.lastGatherMs = Math.max(0, Date.now() - startedAt);
+        if (shouldCacheResult) {
+          this.cacheGatherResult(key, result);
+        }
+        return result;
+      })
+      .catch((error: unknown) => {
+        if (isCalculationCancelled(error)) {
+          this.gatherCancellations++;
+        }
+        throw error;
+      })
+      .finally(() => {
+        if (this.pendingGather?.promise === promise) {
+          this.pendingGather = null;
+        }
+      });
+
+    this.pendingGather = { key, controller, promise };
+    return promise;
+  }
+
+  private async calculateTwoHopLinks(
+    activeFile: TFile | null,
+    signal: AbortSignal
+  ): Promise<GatheredLinks> {
     let forwardLinks: FileEntity[] = [];
     let newLinks: FileEntity[] = [];
     let backwardLinks: FileEntity[] = [];
@@ -266,21 +541,41 @@ export class Links {
         activeFile.extension !== "canvas" &&
         isRankingSortOrder(this.settings.sortOrder);
       const graphIndex = useRanking
-        ? buildGraphIndex(this.app, this.settings)
+        ? await this.graphIndexCache.get(
+            this.settings.excludePaths,
+            this.settings.sortOrder !== "relatedCosenseLike"
+          )
         : undefined;
+      throwIfCalculationCancelled(signal);
+      if (graphIndex) {
+        prepareGraphOrderForPath(this.app, graphIndex, activeFile.path);
+      }
+      const canvasIndex =
+        activeFile.extension === "canvas" ||
+        this.settings.showBackwardConnectedLinks
+          ? await this.getCanvasLinkIndex()
+          : undefined;
+      throwIfCalculationCancelled(signal);
       const activeFileCache: CachedMetadata | null =
         this.app.metadataCache.getFileCache(activeFile);
       ({ resolved: forwardLinks, new: newLinks } = await this.getForwardLinks(
         activeFile,
         activeFileCache,
-        graphIndex
+        graphIndex,
+        undefined,
+        canvasIndex
       ));
+      throwIfCalculationCancelled(signal);
       const seenLinkSet = new Set<string>(forwardLinks.map((it) => it.key()));
       backwardLinks = await this.getBackLinks(
         activeFile,
         seenLinkSet,
-        graphIndex
+        graphIndex,
+        undefined,
+        canvasIndex,
+        this.settings.showBackwardConnectedLinks
       );
+      throwIfCalculationCancelled(signal);
       backwardLinks.forEach((link) => seenLinkSet.add(link.key()));
       const twoHopLinkSet = new Set<string>();
       twoHopLinks = await this.getTwohopLinks(
@@ -288,23 +583,32 @@ export class Links {
         this.app.metadataCache.resolvedLinks,
         seenLinkSet,
         twoHopLinkSet,
-        graphIndex
+        graphIndex,
+        undefined,
+        canvasIndex
       );
+      throwIfCalculationCancelled(signal);
 
-      tagLinksList = await this.getLinksListOfFilesWithTags(
-        activeFile,
-        activeFileCache,
-        seenLinkSet,
-        twoHopLinkSet
-      );
-
-      frontmatterKeyLinksList =
-        await this.getLinksListOfFilesWithFrontmatterKeys(
+      if (this.settings.showTagsLinks) {
+        tagLinksList = await this.getLinksListOfFilesWithTags(
           activeFile,
           activeFileCache,
           seenLinkSet,
           twoHopLinkSet
         );
+        throwIfCalculationCancelled(signal);
+      }
+
+      if (this.settings.showPropertiesLinks) {
+        frontmatterKeyLinksList =
+          await this.getLinksListOfFilesWithFrontmatterKeys(
+            activeFile,
+            activeFileCache,
+            seenLinkSet,
+            twoHopLinkSet
+          );
+        throwIfCalculationCancelled(signal);
+      }
 
       if (graphIndex) {
         const relatedScores = calculateRelatedScores(
@@ -336,6 +640,7 @@ export class Links {
           tagLinksList,
           frontmatterKeyLinksList
         );
+        throwIfCalculationCancelled(signal);
       }
     } else {
       const allMarkdownFiles = this.app.vault
@@ -353,6 +658,7 @@ export class Links {
       forwardLinks = sortedFiles.map((file) => new FileEntity("", file.path));
     }
 
+    throwIfCalculationCancelled(signal);
     return {
       forwardLinks,
       newLinks,
@@ -367,7 +673,8 @@ export class Links {
     activeFile: TFile,
     activeFileCache: CachedMetadata | null,
     graphIndex?: GraphIndex,
-    relatedScores?: Map<string, RelatedCandidateScore>
+    relatedScores?: Map<string, RelatedCandidateScore>,
+    canvasIndex?: CanvasLinkIndex
   ): Promise<{ resolved: FileEntity[]; new: FileEntity[] }> {
     const resolvedLinks: FileEntity[] = [];
     const newLinks: FileEntity[] = [];
@@ -438,12 +745,15 @@ export class Links {
         }
       }
     } else if (activeFile.extension === "canvas") {
-      const canvasContent = await this.app.vault.read(activeFile);
-      const canvasNodes = parseCanvasFileNodes(canvasContent);
+      const indexedTargets = canvasIndex?.outByCanvas.get(activeFile.path);
+      const canvasTargets =
+        indexedTargets ??
+        parseCanvasFileNodes(await this.app.vault.read(activeFile)).map(
+          (node) => node.file
+        );
 
       const seen = new Set<string>();
-      for (const node of canvasNodes) {
-        const key = node.file;
+      for (const key of canvasTargets) {
         if (!seen.has(key)) {
           seen.add(key);
           const targetFile = this.app.vault.getAbstractFileByPath(key);
@@ -507,68 +817,70 @@ export class Links {
     activeFile: TFile,
     forwardLinkSet: Set<string>,
     graphIndex?: GraphIndex,
-    relatedScores?: Map<string, RelatedCandidateScore>
+    relatedScores?: Map<string, RelatedCandidateScore>,
+    canvasIndex?: CanvasLinkIndex,
+    includeCanvasBacklinks = true
   ): Promise<FileEntity[]> {
     const name = activeFile.path;
-    const resolvedLinks: Record<string, Record<string, number>> = this.app
-      .metadataCache.resolvedLinks;
     const backLinkEntities: FileEntity[] = [];
-    for (const src of Object.keys(resolvedLinks)) {
+    const addMarkdownBacklink = (src: string): void => {
       if (shouldExcludePath(src, this.settings.excludePaths)) {
-        continue;
+        return;
       }
-      for (const dest of Object.keys(resolvedLinks[src])) {
-        if (dest == name) {
-          const linkText = filePathToLinkText(src);
-          if (
-            this.settings.enableDuplicateRemoval &&
-            this.hasKnownEntity(forwardLinkSet, src)
-          ) {
-            continue;
-          }
-          backLinkEntities.push(
-            this.applyRankingFields(
-              new FileEntity(src, linkText, activeFile.path, src),
-              src,
-              graphIndex,
-              relatedScores,
-              activeFile.path,
-              src
-            )
-          );
+      if (
+        this.settings.enableDuplicateRemoval &&
+        this.hasKnownEntity(forwardLinkSet, src)
+      ) {
+        return;
+      }
+      const linkText = filePathToLinkText(src);
+      backLinkEntities.push(
+        this.applyRankingFields(
+          new FileEntity(src, linkText, activeFile.path, src),
+          src,
+          graphIndex,
+          relatedScores,
+          activeFile.path,
+          src
+        )
+      );
+    };
+
+    if (graphIndex) {
+      for (const src of graphIndex.in.get(name) ?? []) {
+        addMarkdownBacklink(src);
+      }
+    } else {
+      const resolvedLinks: Record<string, Record<string, number>> = this.app
+        .metadataCache.resolvedLinks;
+      for (const src of Object.keys(resolvedLinks)) {
+        if (Object.prototype.hasOwnProperty.call(resolvedLinks[src], name)) {
+          addMarkdownBacklink(src);
         }
       }
     }
 
-    const allFiles: TFile[] = this.app.vault.getFiles();
-    const canvasFiles: TFile[] = allFiles.filter(
-      (file) => file.extension === "canvas"
-    );
-
-    for (const canvasFile of canvasFiles) {
-      const canvasContent = await this.app.vault.read(canvasFile);
-      const canvasNodes = parseCanvasFileNodes(canvasContent);
-
-      for (const node of canvasNodes) {
-        if (node.file === activeFile.path) {
-          const linkText = filePathToLinkText(canvasFile.path);
-          if (!this.hasKnownEntity(forwardLinkSet, canvasFile.path)) {
-            backLinkEntities.push(
-              this.applyRankingFields(
-                new FileEntity(
-                  canvasFile.path,
-                  linkText,
-                  activeFile.path,
-                  canvasFile.path
-                ),
-                canvasFile.path,
-                graphIndex,
-                relatedScores,
+    if (includeCanvasBacklinks) {
+      const resolvedCanvasIndex =
+        canvasIndex ?? (await this.getCanvasLinkIndex());
+      for (const canvasPath of resolvedCanvasIndex.inByTarget.get(name) ?? []) {
+        const linkText = filePathToLinkText(canvasPath);
+        if (!this.hasKnownEntity(forwardLinkSet, canvasPath)) {
+          backLinkEntities.push(
+            this.applyRankingFields(
+              new FileEntity(
+                canvasPath,
+                linkText,
                 activeFile.path,
-                canvasFile.path
-              )
-            );
-          }
+                canvasPath
+              ),
+              canvasPath,
+              graphIndex,
+              relatedScores,
+              activeFile.path,
+              canvasPath
+            )
+          );
         }
       }
     }
@@ -586,7 +898,8 @@ export class Links {
     forwardLinkSet: Set<string>,
     twoHopLinkSet: Set<string>,
     graphIndex?: GraphIndex,
-    relatedScores?: Map<string, RelatedCandidateScore>
+    relatedScores?: Map<string, RelatedCandidateScore>,
+    canvasIndex?: CanvasLinkIndex
   ): Promise<TwohopLink[]> {
     if (graphIndex && isRankingSortOrder(this.settings.sortOrder)) {
       return this.getRankedTwohopLinks(
@@ -598,7 +911,11 @@ export class Links {
     }
 
     const twoHopLinks: Record<string, FileEntity[]> = {};
-    const twohopLinkList = await this.aggregate2hopLinks(activeFile, links);
+    const twohopLinkList = await this.aggregate2hopLinks(
+      activeFile,
+      links,
+      canvasIndex
+    );
 
     if (twohopLinkList == null) {
       return [];
@@ -637,8 +954,11 @@ export class Links {
 
     let linkKeys: string[] = [];
     if (activeFile.extension === "canvas") {
-      const canvasContent = await this.app.vault.read(activeFile);
-      linkKeys = parseCanvasFileNodes(canvasContent).map((node) => node.file);
+      linkKeys =
+        canvasIndex?.outByCanvas.get(activeFile.path) ??
+        parseCanvasFileNodes(await this.app.vault.read(activeFile)).map(
+          (node) => node.file
+        );
     } else if (links[activeFile.path]) {
       linkKeys = Object.keys(links[activeFile.path]);
     }
@@ -832,7 +1152,8 @@ export class Links {
 
   async aggregate2hopLinks(
     activeFile: TFile,
-    links: Record<string, Record<string, number>>
+    links: Record<string, Record<string, number>>,
+    canvasIndex?: CanvasLinkIndex
   ): Promise<Record<string, string[]>> {
     const result: Record<string, string[]> = {};
 
@@ -843,9 +1164,13 @@ export class Links {
     }
 
     if (activeFile.extension === "canvas") {
-      const canvasContent = await this.app.vault.read(activeFile);
-      for (const node of parseCanvasFileNodes(canvasContent)) {
-        activeFileLinks.add(node.file);
+      const targets =
+        canvasIndex?.outByCanvas.get(activeFile.path) ??
+        parseCanvasFileNodes(await this.app.vault.read(activeFile)).map(
+          (node) => node.file
+        );
+      for (const target of targets) {
+        activeFileLinks.add(target);
       }
     }
 
@@ -950,6 +1275,8 @@ export class Links {
     forwardLinkSet: Set<string>,
     twoHopLinkSet: Set<string>
   ): Promise<PropertiesLinks[]> {
+    if (this.settings.frontmatterKeys.length === 0) return [];
+
     const activeFileFrontmatter = activeFileCache?.frontmatter;
     if (!activeFileFrontmatter) return [];
 
@@ -1147,9 +1474,20 @@ export class Links {
     sourcePathFn: (entity: FileEntity) => string | null,
     sortOrder: SortOrder
   ): Promise<FileEntity[]> {
+    const needsFileStats =
+      sortOrder !== "random" &&
+      sortOrder !== "filenameAsc" &&
+      sortOrder !== "filenameDesc";
     const statsPromises = entities.map(async (entity) => {
       const sourcePath = sourcePathFn(entity);
-      const stat = sourcePath
+      const abstractFile = sourcePath
+        ? this.app.vault.getAbstractFileByPath(sourcePath)
+        : null;
+      const stat = !needsFileStats
+        ? null
+        : abstractFile instanceof TFile
+        ? abstractFile.stat
+        : sourcePath
         ? await this.app.vault.adapter.stat(sourcePath)
         : null;
       return { entity, stat };

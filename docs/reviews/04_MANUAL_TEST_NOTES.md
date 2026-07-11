@@ -30,6 +30,20 @@ Automated release checks confirmed:
 - dependency audit reports zero known vulnerabilities;
 - pull-request Validate and CodeQL checks pass.
 
+## Version 0.40.0 acceptance — 2026-07-12
+
+- Test environment: the dedicated local test Vault.
+- Maintainer result: no problems found in the manual checks; release approval
+  received.
+- Focus: startup/tab-switch load reduction while retaining the existing ranking
+  and display behavior.
+- Automated coverage verifies the startup grace-period gate, rapid-event
+  coalescing, recent-result and graph reuse, invalidation, Canvas scan avoidance
+  when hidden, and cancellation of superseded work.
+- A deterministic 3,000-note synthetic benchmark verifies that eight tab
+  switches build the shared graph once rather than eight times. Wall-clock
+  speed varies by machine and is recorded for information only.
+
 ## Residual platform-specific risks
 
 Mobile long-press behavior and responsiveness in a substantially larger Vault

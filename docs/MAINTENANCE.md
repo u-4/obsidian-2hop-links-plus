@@ -15,14 +15,19 @@ workflow described below.
 ```bash
 npm ci
 npm run build
+npm test
 npm run eslint
 git diff --check
 npm audit
+npm run benchmark
 ```
 
+`npm test` uses a synthetic in-memory Vault and must pass deterministically.
 `npm run eslint` must finish with zero warnings and zero errors. `npm audit`
-must report no known dependency vulnerabilities. The build creates `main.js`,
-which remains ignored because it is a generated artifact.
+must report no known dependency vulnerabilities. `npm run benchmark` records
+performance but only its graph-build and metadata-read counters are release
+gates; elapsed time varies by machine. The build creates `main.js`, which
+remains ignored because it is a generated artifact.
 
 `package.json` approves only the pinned `esbuild` install script. When updating
 esbuild, inspect the new package script and re-approve that exact version with
@@ -38,6 +43,10 @@ confirm the following interaction behavior:
 - Hover Preview and Hover Editor popups do not change the 2-hop pane target.
 - 2-hop and Back Links cards jump to the relevant link line.
 - WebP and relative embedded images render in cards.
+- The first calculation does not start during workspace layout restoration.
+- Rapid tab switching settles on the last selected note without a stale render.
+- Returning to a recently viewed note increases result-cache hits rather than
+  rebuilding the entire graph.
 
 ## Deploy to a test or personal Vault
 

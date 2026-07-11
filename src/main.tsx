@@ -1,5 +1,6 @@
 import {
   MarkdownView,
+  Notice,
   Plugin,
   TFile,
   WorkspaceLeaf,
@@ -21,6 +22,7 @@ import { readPreview } from "./preview";
 import { getTitle } from "./getTitle";
 import { loadSettings, saveSettings } from "./settings/index";
 import { Links } from "./links";
+import type { GatheredLinks } from "./links";
 import { OpenPaneTarget } from "./types";
 import { isSortOrder } from "./settings/sortOptions";
 import type { SortOrder } from "./settings/sortOptions";
@@ -29,6 +31,13 @@ import {
   openLinkTextCompat,
   unregisterHoverLinkSourceCompat,
 } from "./obsidianCompat";
+import {
+  DebouncedTask,
+  DEFAULT_REFRESH_DEBOUNCE_MS,
+  isCalculationCancelled,
+  METADATA_REFRESH_DEBOUNCE_MS,
+  StartupRefreshGate,
+} from "./performance";
 
 const CONTAINER_CLASS = "twohop-links-container";
 export const HOVER_LINK_ID = "2hop-links";
@@ -44,28 +53,45 @@ export default class TwohopLinksPlugin extends Plugin {
   private temporarySortOrder: SortOrder | null = null;
   private temporarySortOrderPath: string | null = null;
   private lastRenderedFilePath: string | null = null;
+  private refreshTask: DebouncedTask;
+  private readonly startupRefreshGate = new StartupRefreshGate();
+  private isUnloaded = false;
 
   async onload(): Promise<void> {
     console.debug("------ loading obsidian-twohop-links plugin");
+    this.isUnloaded = false;
 
     this.settings = await loadSettings(this);
     this.showLinksInMarkdown = true;
     this.links = new Links(this.app, this.settings);
+    this.refreshTask = new DebouncedTask({
+      onSupersede: () => this.links.cancelActiveGather(),
+      onError: (error) => console.error("Error refreshing 2-hop links", error),
+    });
 
     this.initPlugin();
   }
 
-  async initPlugin(): Promise<void> {
+  initPlugin(): void {
     this.addSettingTab(new TwohopSettingTab(this.app, this));
     this.registerView(
       "TwoHopLinksView",
       (leaf: WorkspaceLeaf) => new SeparatePaneView(leaf, this, this.links)
     );
     this.registerEvent(
-      this.app.metadataCache.on("changed", async (file: TFile) => {
-        if (file === this.app.workspace.getActiveFile()) {
-          await this.renderTwohopLinks(false);
-        }
+      this.app.metadataCache.on("changed", () => {
+        this.links.invalidateMetadataCaches();
+      })
+    );
+    this.registerEvent(
+      this.app.metadataCache.on("deleted", () => {
+        this.links.invalidateMetadataCaches();
+      })
+    );
+    this.registerEvent(
+      this.app.metadataCache.on("resolved", () => {
+        this.links.invalidateMetadataCaches();
+        this.scheduleRefresh(true, METADATA_REFRESH_DEBOUNCE_MS);
       })
     );
     this.registerEvent(
@@ -80,13 +106,134 @@ export default class TwohopLinksPlugin extends Plugin {
       })
     );
     this.app.workspace.trigger("parse-style-settings");
+    this.app.workspace.onLayoutReady(() => {
+      if (this.isUnloaded) {
+        return;
+      }
+      this.startupRefreshGate.markLayoutReady();
+      this.registerVaultInvalidationEvents();
+      this.scheduleRefresh(true, this.getRefreshDebounceMs());
+    });
 
-    await this.renderTwohopLinks(true);
+    this.addCommand({
+      id: "show-performance-statistics",
+      name: "Show performance statistics",
+      callback: () => this.showPerformanceStatistics(),
+    });
+    this.addCommand({
+      id: "reset-performance-statistics",
+      name: "Reset performance statistics",
+      callback: () => {
+        this.links.resetPerformanceStats();
+        new Notice("2Hop Links performance statistics reset");
+      },
+    });
   }
 
   onunload(): void {
+    this.isUnloaded = true;
+    this.refreshTask.cancel();
+    this.links.cancelPendingCalculations();
     this.disableLinksInMarkdown();
     console.log("unloading plugin");
+  }
+
+  getRefreshDebounceMs(): number {
+    const configured = this.settings.refreshDebounceMs;
+    return Number.isFinite(configured)
+      ? Math.min(2000, Math.max(0, configured))
+      : DEFAULT_REFRESH_DEBOUNCE_MS;
+  }
+
+  isWorkspaceLayoutReady(): boolean {
+    return this.startupRefreshGate.isLayoutReady();
+  }
+
+  whenWorkspaceLayoutReady(callback: () => void): void {
+    if (this.isWorkspaceLayoutReady()) {
+      callback();
+      return;
+    }
+
+    this.app.workspace.onLayoutReady(() => {
+      if (!this.isUnloaded) {
+        callback();
+      }
+    });
+  }
+
+  getEffectiveRefreshDelayMs(requestedDelayMs: number): number | null {
+    return this.startupRefreshGate.getDelay(requestedDelayMs);
+  }
+
+  markRefreshStarted(): void {
+    this.startupRefreshGate.markRefreshStarted();
+  }
+
+  private registerVaultInvalidationEvents(): void {
+    this.registerEvent(
+      this.app.vault.on("create", (file) => {
+        if (file instanceof TFile && file.extension === "canvas") {
+          this.links.invalidateCanvasCaches();
+          this.scheduleRefresh(true, METADATA_REFRESH_DEBOUNCE_MS);
+        } else {
+          this.links.invalidateMetadataCaches();
+        }
+      })
+    );
+    this.registerEvent(
+      this.app.vault.on("delete", (file) => {
+        if (file instanceof TFile && file.extension === "canvas") {
+          this.links.invalidateCanvasCaches();
+          this.scheduleRefresh(true, METADATA_REFRESH_DEBOUNCE_MS);
+        } else {
+          this.links.invalidateMetadataCaches();
+        }
+      })
+    );
+    this.registerEvent(
+      this.app.vault.on("rename", (file) => {
+        this.links.invalidateMetadataCaches();
+        this.links.invalidateCanvasCaches();
+        if (file instanceof TFile && file.extension === "canvas") {
+          this.scheduleRefresh(true, METADATA_REFRESH_DEBOUNCE_MS);
+        }
+      })
+    );
+    this.registerEvent(
+      this.app.vault.on("modify", (file) => {
+        if (file instanceof TFile && file.extension === "canvas") {
+          this.links.invalidateCanvasCaches();
+          this.scheduleRefresh(true, METADATA_REFRESH_DEBOUNCE_MS);
+        }
+      })
+    );
+  }
+
+  private scheduleRefresh(isForceUpdate: boolean, delayMs: number): void {
+    if (this.isUnloaded || !this.showLinksInMarkdown) {
+      return;
+    }
+    const effectiveDelayMs = this.getEffectiveRefreshDelayMs(delayMs);
+    if (effectiveDelayMs === null) {
+      return;
+    }
+    this.refreshTask.schedule(effectiveDelayMs, async () => {
+      this.markRefreshStarted();
+      await this.renderTwohopLinks(isForceUpdate);
+    });
+  }
+
+  private showPerformanceStatistics(): void {
+    const stats = this.links.getPerformanceStats();
+    const message =
+      `Graph builds ${stats.builds}, graph hits ${stats.hits}, ` +
+      `result calculations ${stats.resultComputations}, result hits ${stats.resultCacheHits}, ` +
+      `joined ${stats.joinedComputations}, cancelled ${
+        stats.gatherCancellations + stats.cancellations
+      }, last graph ${stats.lastBuildMs} ms, last result ${stats.lastGatherMs} ms`;
+    console.info("2Hop Links performance statistics", stats);
+    new Notice(message, 10000);
   }
 
   private shouldIgnoreActiveLeaf(leaf: WorkspaceLeaf | null): boolean {
@@ -131,7 +278,7 @@ export default class TwohopLinksPlugin extends Plugin {
     }
 
     if (this.showLinksInMarkdown) {
-      await this.renderTwohopLinks(true);
+      this.scheduleRefresh(true, this.getRefreshDebounceMs());
     }
   }
 
@@ -252,6 +399,8 @@ export default class TwohopLinksPlugin extends Plugin {
   }
 
   async updateTwoHopLinksView(): Promise<void> {
+    this.refreshTask.cancel();
+    this.links.cancelActiveGather();
     if (this.isTwoHopLinksViewOpen()) {
       this.app.workspace.detachLeavesOfType("TwoHopLinksView");
     }
@@ -391,6 +540,15 @@ export default class TwohopLinksPlugin extends Plugin {
       this.previousLinks.sort().join(",") !== currentLinks.sort().join(",") ||
       this.previousTags.sort().join(",") !== currentTags.sort().join(",")
     ) {
+      let gatheredLinks: GatheredLinks;
+      try {
+        gatheredLinks = await this.links.gatherTwoHopLinks(activeFile);
+      } catch (error) {
+        if (isCalculationCancelled(error)) {
+          return;
+        }
+        throw error;
+      }
       const {
         forwardLinks,
         newLinks,
@@ -398,7 +556,7 @@ export default class TwohopLinksPlugin extends Plugin {
         twoHopLinks,
         tagLinksList,
         frontmatterKeyLinksList,
-      } = await this.links.gatherTwoHopLinks(activeFile);
+      } = gatheredLinks;
 
       const currentActiveFile = this.app.workspace.getActiveFile();
       if (
@@ -471,13 +629,13 @@ export default class TwohopLinksPlugin extends Plugin {
 
   enableLinksInMarkdown(): void {
     this.showLinksInMarkdown = true;
-    this.renderTwohopLinks(true).then(() =>
-      console.debug("Rendered two hop links")
-    );
+    this.scheduleRefresh(true, 0);
   }
 
   disableLinksInMarkdown(): void {
     this.showLinksInMarkdown = false;
+    this.refreshTask.cancel();
+    this.links.cancelActiveGather();
     this.removeTwohopLinks();
     const container = this.app.workspace.containerEl.querySelector(
       ".twohop-links-container"

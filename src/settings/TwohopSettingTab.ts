@@ -24,6 +24,7 @@ export interface TwohopPluginSettings {
   createFilesForMultiLinked: boolean;
   showFullPathInLinkCards: boolean;
   includeBodyInCardSearch: boolean;
+  refreshDebounceMs: number;
   frontmatterPropertyKeyAsTitle: string;
   frontmatterKeys: string[];
   [key: string]: boolean | string | string[] | number | undefined;
@@ -128,6 +129,11 @@ export class TwohopSettingTab extends PluginSettingTab {
       "If true, non-empty card searches can match the body text of candidate cards.",
       "includeBodyInCardSearch"
     );
+    this.createTextSettingNum(
+      "Tab switch calculation delay (ms)",
+      "Wait before recalculating after tab changes. The default 200 ms reduces duplicate startup and tab-switch work; use 0 for immediate calculation.",
+      "refreshDebounceMs"
+    );
     this.createTextSettingStr(
       "Set frontmatter property key as title",
       "Set the property key of the frontmatter to be used as the title to be displayed.",
@@ -217,9 +223,15 @@ export class TwohopSettingTab extends PluginSettingTab {
       .addText((text) => {
         text.setValue((this.plugin.settings[key] as number).toString());
         text.inputEl.addEventListener("blur", async (event) => {
-          this.plugin.settings[key] = Number(
+          const parsedValue = Number(
             (event.target as HTMLInputElement).value
           );
+          this.plugin.settings[key] =
+            key === "refreshDebounceMs"
+              ? Number.isFinite(parsedValue)
+                ? Math.min(2000, Math.max(0, parsedValue))
+                : 200
+              : parsedValue;
           await saveSettings(this.plugin);
           await this.plugin.updateTwoHopLinksView();
         });

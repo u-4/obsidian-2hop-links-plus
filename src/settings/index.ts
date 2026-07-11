@@ -22,6 +22,7 @@ export const DEFAULT_SETTINGS: TwohopPluginSettings = {
   createFilesForMultiLinked: false,
   showFullPathInLinkCards: false,
   includeBodyInCardSearch: true,
+  refreshDebounceMs: 200,
   frontmatterPropertyKeyAsTitle: "",
   frontmatterKeys: [],
 };
@@ -33,6 +34,14 @@ export async function loadSettings(
   const settings = Object.assign({}, DEFAULT_SETTINGS, data);
   if (!isSortOrder(data?.sortOrder)) {
     settings.sortOrder = DEFAULT_SETTINGS.sortOrder;
+  }
+  if (
+    !Number.isFinite(settings.refreshDebounceMs) ||
+    settings.refreshDebounceMs < 0
+  ) {
+    settings.refreshDebounceMs = DEFAULT_SETTINGS.refreshDebounceMs;
+  } else {
+    settings.refreshDebounceMs = Math.min(2000, settings.refreshDebounceMs);
   }
   return settings;
 }
