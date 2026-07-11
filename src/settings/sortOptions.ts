@@ -1,4 +1,4 @@
-export const SORT_ORDER_OPTIONS: Record<string, string> = {
+export const SORT_ORDER_OPTIONS = {
   random: "Random",
   filenameAsc: "File name (A to Z)",
   filenameDesc: "File name (Z to A)",
@@ -10,8 +10,13 @@ export const SORT_ORDER_OPTIONS: Record<string, string> = {
   relatedCosenseLike: "Related, Cosense-like",
   pageRankDesc: "Page rank",
   mostLinkedDesc: "Most linked",
-};
+} as const;
 
-export function isSortOrder(value: string): boolean {
-  return Object.prototype.hasOwnProperty.call(SORT_ORDER_OPTIONS, value);
+export type SortOrder = keyof typeof SORT_ORDER_OPTIONS;
+
+export function isSortOrder(value: unknown): value is SortOrder {
+  return (
+    typeof value === "string" &&
+    Object.prototype.hasOwnProperty.call(SORT_ORDER_OPTIONS, value)
+  );
 }

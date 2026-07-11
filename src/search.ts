@@ -3,6 +3,7 @@ import { FileEntity } from "./model/FileEntity";
 import { PropertiesLinks } from "./model/PropertiesLinks";
 import { TwohopLink } from "./model/TwohopLink";
 import { filePathToLinkText, removeBlockReference } from "./utils";
+import { getFrontmatterLinks } from "./obsidianCompat";
 
 export function normalizeSearchTokens(query: string): string[] {
   return query
@@ -126,7 +127,7 @@ export function buildFileEntitySearchText(
         const references = [
           ...(cache.links ?? []),
           ...(cache.embeds ?? []),
-          ...(((cache as any).frontmatterLinks as any[]) ?? []),
+          ...getFrontmatterLinks(cache),
         ];
 
         for (const reference of references) {
@@ -169,21 +170,24 @@ function resolveEntityFile(app: App, entity: FileEntity): TFile | null {
   return app.metadataCache.getFirstLinkpathDest(linkText, entity.sourcePath);
 }
 
-function collectFrontmatterAliases(frontmatter: any): string[] {
-  if (!frontmatter) return [];
-  return collectStringValues(frontmatter.aliases).concat(
-    collectStringValues(frontmatter.alias)
+function collectFrontmatterAliases(frontmatter: unknown): string[] {
+  return collectStringValues(getRecordValue(frontmatter, "aliases")).concat(
+    collectStringValues(getRecordValue(frontmatter, "alias"))
   );
 }
 
-function collectFrontmatterTags(frontmatter: any): string[] {
-  if (!frontmatter) return [];
-  return collectStringValues(frontmatter.tags).map((tag) =>
+function collectFrontmatterTags(frontmatter: unknown): string[] {
+  return collectStringValues(getRecordValue(frontmatter, "tags")).map((tag) =>
     tag.replace(/^#/, "")
   );
 }
 
-function collectStringValues(value: any): string[] {
+function getRecordValue(value: unknown, key: string): unknown {
+  if (typeof value !== "object" || value === null) return undefined;
+  return (value as Record<string, unknown>)[key];
+}
+
+function collectStringValues(value: unknown): string[] {
   if (typeof value === "string") {
     return value
       .split(",")

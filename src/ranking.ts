@@ -1,18 +1,7 @@
 import { App, TFile } from "obsidian";
 import { removeBlockReference, shouldExcludePath } from "./utils";
-
-export type SortOrder =
-  | "random"
-  | "filenameAsc"
-  | "filenameDesc"
-  | "modifiedDesc"
-  | "modifiedAsc"
-  | "createdDesc"
-  | "createdAsc"
-  | "relatedScoreDesc"
-  | "relatedCosenseLike"
-  | "pageRankDesc"
-  | "mostLinkedDesc";
+import { getFrontmatterLinks } from "./obsidianCompat";
+import type { SortOrder } from "./settings/sortOptions";
 
 export type RankingSortOrder =
   | "relatedScoreDesc"
@@ -61,7 +50,7 @@ interface LinkReference {
 const MISSING_OFFSET = 9007199254740991;
 
 export function isRankingSortOrder(
-  sortOrder: string
+  sortOrder: SortOrder
 ): sortOrder is RankingSortOrder {
   return (
     sortOrder === "relatedScoreDesc" ||
@@ -92,8 +81,8 @@ export function buildGraphIndex(
     inn.set(file.path, new Set<string>());
   }
 
-  const resolvedLinks: Record<string, Record<string, number>> =
-    app.metadataCache.resolvedLinks;
+  const resolvedLinks: Record<string, Record<string, number>> = app
+    .metadataCache.resolvedLinks;
   for (const source of Object.keys(resolvedLinks)) {
     if (!pathSet.has(source)) continue;
 
@@ -190,7 +179,8 @@ export function calculateRelatedScores(
 
     for (const sharedPath of sharedLinks) {
       const idf = getIdf(sharedPath, graph);
-      const activeIndex = activeOrderIndex.get(sharedPath) ?? activeOrder.length;
+      const activeIndex =
+        activeOrderIndex.get(sharedPath) ?? activeOrder.length;
       const weighted = idf / (1 + activeIndex);
       sharedIdf += idf;
       orderAffinity += weighted;
@@ -206,11 +196,7 @@ export function calculateRelatedScores(
     rawOrderAffinity.set(candidatePath, orderAffinity);
     directLinkBonus.set(
       candidatePath,
-      activeOut.has(candidatePath)
-        ? 1
-        : candidateOut.has(activePath)
-        ? 0.8
-        : 0
+      activeOut.has(candidatePath) ? 1 : candidateOut.has(activePath) ? 0.8 : 0
     );
     sharedLinksByPath.set(candidatePath, sharedLinks);
     bestIntermediateByPath.set(candidatePath, bestIntermediate);
@@ -247,7 +233,7 @@ export function calculateRelatedScores(
 
 export function chooseIntermediateForScore(
   score: RelatedCandidateScore,
-  sortOrder: string
+  sortOrder: SortOrder
 ): string | null {
   if (sortOrder === "relatedCosenseLike") {
     return score.sharedLinks[0] ?? null;
@@ -268,10 +254,9 @@ function getOutgoingPathsInDocumentOrder(
     ...((cache.links ?? []) as LinkReference[]),
     ...((cache.embeds ?? []) as LinkReference[]),
   ].sort((a, b) => getReferenceOffset(a) - getReferenceOffset(b));
-  const frontmatterReferences = ((((cache as any).frontmatterLinks ??
-    []) as LinkReference[])
-    .slice()
-    .sort((a, b) => getReferenceOffset(a) - getReferenceOffset(b)));
+  // Obsidian's FrontmatterLinkCache has no document position. Preserve the
+  // cache order and append frontmatter links after positioned body links.
+  const frontmatterReferences: LinkReference[] = getFrontmatterLinks(cache);
   const references = bodyReferences.concat(frontmatterReferences);
   const seen = new Set<string>();
   const result: string[] = [];

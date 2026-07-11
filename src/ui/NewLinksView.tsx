@@ -21,7 +21,7 @@ export default class NewLinksView extends React.Component<NewLinksViewProps> {
     super(props);
   }
 
-  shouldComponentUpdate(nextProps: NewLinksViewProps) {
+  shouldComponentUpdate(nextProps: NewLinksViewProps): boolean {
     return (
       this.props.fileEntities !== nextProps.fileEntities ||
       this.props.displayedBoxCount !== nextProps.displayedBoxCount ||
@@ -29,13 +29,13 @@ export default class NewLinksView extends React.Component<NewLinksViewProps> {
     );
   }
 
-  componentDidMount() {
+  componentDidMount(): void {
     if (this.loadMoreRef.current) {
       setIcon(this.loadMoreRef.current, "more-horizontal");
     }
   }
 
-  componentDidUpdate() {
+  componentDidUpdate(): void {
     if (this.loadMoreRef.current) {
       setIcon(this.loadMoreRef.current, "more-horizontal");
     }

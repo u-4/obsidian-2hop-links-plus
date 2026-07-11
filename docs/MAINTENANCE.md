@@ -8,16 +8,25 @@ deployment paths, and operational records stay outside the repository.
 
 ## Build
 
+Use Node.js 20.17 or newer with npm 11 or newer. CI and release workflows
+currently use Node.js 24. npm 11 is required for the install-script approval
+workflow described below.
+
 ```bash
 npm ci
 npm run build
 npm run eslint
 git diff --check
+npm audit
 ```
 
-`npm run eslint` currently reports legacy warnings but must finish with zero
-errors. The build creates `main.js`, which remains ignored because it is a
-generated artifact.
+`npm run eslint` must finish with zero warnings and zero errors. `npm audit`
+must report no known dependency vulnerabilities. The build creates `main.js`,
+which remains ignored because it is a generated artifact.
+
+`package.json` approves only the pinned `esbuild` install script. When updating
+esbuild, inspect the new package script and re-approve that exact version with
+`npm approve-scripts esbuild`; do not approve all dependency scripts at once.
 
 ## Manual acceptance
 
@@ -42,5 +51,5 @@ confirm the following interaction behavior:
 ## Rollback
 
 Restore the three files from the most recent timestamped backup, then reload the
-plugin or restart Obsidian. The migration itself does not alter the installed
-Vault plugin.
+plugin or restart Obsidian. The update procedure itself does not modify Vault
+notes or attachments.

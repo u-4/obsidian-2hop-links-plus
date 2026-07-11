@@ -2,6 +2,7 @@ import { App, PluginSettingTab, Setting } from "obsidian";
 import TwohopLinksPlugin from "../main";
 import { saveSettings } from ".";
 import { SORT_ORDER_OPTIONS } from "./sortOptions";
+import type { SortOrder } from "./sortOptions";
 
 export interface TwohopPluginSettings {
   autoLoadTwoHopLinks: boolean;
@@ -16,7 +17,7 @@ export interface TwohopPluginSettings {
   initialBoxCount: number;
   initialSectionCount: number;
   enableDuplicateRemoval: boolean;
-  sortOrder: string;
+  sortOrder: SortOrder;
   showTwoHopLinksInSeparatePane: boolean;
   excludeTags: string[];
   panePositionIsRight: boolean;
@@ -138,7 +139,7 @@ export class TwohopSettingTab extends PluginSettingTab {
     name: string,
     desc: string,
     key: keyof TwohopPluginSettings
-  ) {
+  ): void {
     new Setting(this.containerEl)
       .setName(name)
       .setDesc(desc)
@@ -159,7 +160,7 @@ export class TwohopSettingTab extends PluginSettingTab {
     desc: string,
     key: keyof TwohopPluginSettings,
     options: Record<string, string>
-  ) {
+  ): void {
     new Setting(this.containerEl)
       .setName(name)
       .setDesc(desc)
@@ -186,7 +187,7 @@ export class TwohopSettingTab extends PluginSettingTab {
     desc: string,
     key: keyof TwohopPluginSettings,
     placeholder: string
-  ) {
+  ): void {
     new Setting(this.containerEl)
       .setName(name)
       .setDesc(desc)
@@ -209,7 +210,7 @@ export class TwohopSettingTab extends PluginSettingTab {
     name: string,
     desc: string,
     key: keyof TwohopPluginSettings
-  ) {
+  ): void {
     new Setting(this.containerEl)
       .setName(name)
       .setDesc(desc)
@@ -229,7 +230,7 @@ export class TwohopSettingTab extends PluginSettingTab {
     name: string,
     desc: string,
     key: keyof TwohopPluginSettings
-  ) {
+  ): void {
     new Setting(this.containerEl)
       .setName(name)
       .setDesc(desc)

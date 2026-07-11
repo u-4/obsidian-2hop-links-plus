@@ -3,6 +3,7 @@ import React from "react";
 import ReactDOM from "react-dom";
 import TwohopLinksPlugin from "../main";
 import { Links } from "../links";
+import { getRuntimeLeafFile, getRuntimeLeafParts } from "../obsidianCompat";
 
 export class SeparatePaneView extends ItemView {
   private plugin: TwohopLinksPlugin;
@@ -104,7 +105,7 @@ export class SeparatePaneView extends ItemView {
     }
   }
 
-  handleError(message: string, error: any): void {
+  handleError(message: string, error: unknown): void {
     console.error(message, error);
     ReactDOM.unmountComponentAtNode(this.containerEl);
     ReactDOM.render(
@@ -118,9 +119,8 @@ export class SeparatePaneView extends ItemView {
       return true;
     }
 
-    const leafAny = leaf as any;
-    const viewAny = leaf.view as any;
-    const containerEl = viewAny.containerEl ?? leafAny.containerEl;
+    const runtime = getRuntimeLeafParts(leaf);
+    const containerEl = runtime.view.containerEl ?? runtime.leaf.containerEl;
     const parentEl = containerEl?.parentElement;
     const viewType =
       typeof leaf.view.getViewType === "function"
@@ -132,9 +132,9 @@ export class SeparatePaneView extends ItemView {
     }
 
     if (
-      leafAny.hoverPopover ||
-      leafAny.isHoverPopover ||
-      viewAny.hoverPopover
+      runtime.leaf.hoverPopover ||
+      runtime.leaf.isHoverPopover ||
+      runtime.view.hoverPopover
     ) {
       return true;
     }
@@ -158,8 +158,7 @@ export class SeparatePaneView extends ItemView {
       return;
     }
 
-    const newActiveFile =
-      file ?? ((leaf?.view as any)?.file as TFile | null) ?? null;
+    const newActiveFile = file ?? (leaf ? getRuntimeLeafFile(leaf) : null);
     if (!newActiveFile) {
       return;
     }
@@ -172,7 +171,7 @@ export class SeparatePaneView extends ItemView {
     }
   }
 
-  registerActiveFileUpdateEvent() {
+  registerActiveFileUpdateEvent(): void {
     let lastActiveFilePath: string | null = this.lastMainFile?.path ?? null;
 
     this.registerEvent(

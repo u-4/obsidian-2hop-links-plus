@@ -14,8 +14,8 @@ interface LinkViewProps {
 }
 
 interface LinkViewState {
-  preview: string;
-  title: string;
+  preview: string | null;
+  title: string | null;
   mouseDown: boolean;
   dragging: boolean;
   touchStart: number;
@@ -51,7 +51,7 @@ export default class LinkView
     }
   }
 
-  componentWillUnmount() {
+  componentWillUnmount(): void {
     this.abortController?.abort();
   }
 
@@ -86,7 +86,7 @@ export default class LinkView
     }
   }
 
-  async openFileWithOptions(options?: OpenPaneTarget) {
+  async openFileWithOptions(options?: OpenPaneTarget): Promise<void> {
     await this.props.onClick(this.props.fileEntity, options);
   }
 
@@ -100,7 +100,7 @@ export default class LinkView
     return this.hoverLinkText().replace(/\.md$/i, "");
   }
 
-  handleContextMenu = (event: React.MouseEvent | React.TouchEvent) => {
+  handleContextMenu = (event: React.MouseEvent | React.TouchEvent): void => {
     if ("button" in event && event.button !== 2) return;
     event.preventDefault();
 
@@ -113,7 +113,7 @@ export default class LinkView
         ? event.changedTouches[0].clientY
         : event.clientY;
 
-    const menu = new Menu(this.props.app);
+    const menu = new Menu();
 
     menu.addItem((item) =>
       item.setTitle("Open link").onClick(async () => {
@@ -142,7 +142,7 @@ export default class LinkView
     menu.showAtPosition({ x: clientX, y: clientY });
   };
 
-  onMouseOver = (e: React.MouseEvent) => {
+  onMouseOver = (e: React.MouseEvent): void => {
     const targetEl = e.currentTarget as HTMLElement;
 
     if (targetEl.tagName !== "DIV") return;
@@ -157,7 +157,9 @@ export default class LinkView
     });
   };
 
-  onMouseUpOrTouchEnd = async (event: React.MouseEvent | React.TouchEvent) => {
+  onMouseUpOrTouchEnd = async (
+    event: React.MouseEvent | React.TouchEvent
+  ): Promise<void> => {
     const longPress = Date.now() - this.state.touchStart >= 500;
     if (longPress && !this.state.dragging) {
       this.handleContextMenu(event);

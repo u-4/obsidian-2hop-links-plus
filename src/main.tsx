@@ -23,6 +23,12 @@ import { loadSettings, saveSettings } from "./settings/index";
 import { Links } from "./links";
 import { OpenPaneTarget } from "./types";
 import { isSortOrder } from "./settings/sortOptions";
+import type { SortOrder } from "./settings/sortOptions";
+import {
+  getRuntimeLeafParts,
+  openLinkTextCompat,
+  unregisterHoverLinkSourceCompat,
+} from "./obsidianCompat";
 
 const CONTAINER_CLASS = "twohop-links-container";
 export const HOVER_LINK_ID = "2hop-links";
@@ -35,7 +41,7 @@ export default class TwohopLinksPlugin extends Plugin {
   private previousLinks: string[] = [];
   private previousTags: string[] = [];
   private renderGeneration = 0;
-  private temporarySortOrder: string | null = null;
+  private temporarySortOrder: SortOrder | null = null;
   private temporarySortOrderPath: string | null = null;
   private lastRenderedFilePath: string | null = null;
 
@@ -49,7 +55,7 @@ export default class TwohopLinksPlugin extends Plugin {
     this.initPlugin();
   }
 
-  async initPlugin() {
+  async initPlugin(): Promise<void> {
     this.addSettingTab(new TwohopSettingTab(this.app, this));
     this.registerView(
       "TwoHopLinksView",
@@ -88,9 +94,8 @@ export default class TwohopLinksPlugin extends Plugin {
       return false;
     }
 
-    const leafAny = leaf as any;
-    const viewAny = leaf.view as any;
-    const containerEl = viewAny.containerEl ?? leafAny.containerEl;
+    const runtime = getRuntimeLeafParts(leaf);
+    const containerEl = runtime.view.containerEl ?? runtime.leaf.containerEl;
     const parentEl = containerEl?.parentElement;
     const viewType =
       typeof leaf.view.getViewType === "function"
@@ -102,9 +107,9 @@ export default class TwohopLinksPlugin extends Plugin {
     }
 
     if (
-      leafAny.hoverPopover ||
-      leafAny.isHoverPopover ||
-      viewAny.hoverPopover
+      runtime.leaf.hoverPopover ||
+      runtime.leaf.isHoverPopover ||
+      runtime.view.hoverPopover
     ) {
       return true;
     }
@@ -120,7 +125,7 @@ export default class TwohopLinksPlugin extends Plugin {
     return false;
   }
 
-  async refreshTwohopLinks(leaf?: WorkspaceLeaf) {
+  async refreshTwohopLinks(leaf?: WorkspaceLeaf | null): Promise<void> {
     if (this.shouldIgnoreActiveLeaf(leaf ?? null)) {
       return;
     }
@@ -162,7 +167,6 @@ export default class TwohopLinksPlugin extends Plugin {
     const references = [
       ...(cache.links ?? []),
       ...(cache.embeds ?? []),
-      ...(((cache as any).frontmatterLinks as any[]) ?? []),
     ]
       .slice()
       .sort(
@@ -229,10 +233,11 @@ export default class TwohopLinksPlugin extends Plugin {
           )
         : undefined;
 
-    await this.app.workspace.openLinkText(
+    await openLinkTextCompat(
+      this.app.workspace,
       fileEntity.targetPath ?? fileEntity.linkText,
       fileEntity.sourcePath,
-      newLeaf as any,
+      newLeaf,
       line != null ? { eState: { line } } : undefined
     );
 
@@ -241,12 +246,12 @@ export default class TwohopLinksPlugin extends Plugin {
       activeView.editor?.setCursor({ line, ch: 0 });
       activeView.editor?.scrollIntoView(
         { from: { line, ch: 0 }, to: { line, ch: 0 } },
-        80
+        true
       );
     }
   }
 
-  async updateTwoHopLinksView() {
+  async updateTwoHopLinksView(): Promise<void> {
     if (this.isTwoHopLinksViewOpen()) {
       this.app.workspace.detachLeavesOfType("TwoHopLinksView");
     }
@@ -259,7 +264,7 @@ export default class TwohopLinksPlugin extends Plugin {
     }
   }
 
-  prepareLinksForFile(file: TFile | null): string {
+  prepareLinksForFile(file: TFile | null): SortOrder {
     const filePath = file?.path ?? null;
     if (this.lastRenderedFilePath !== filePath) {
       this.temporarySortOrder = null;
@@ -310,10 +315,12 @@ export default class TwohopLinksPlugin extends Plugin {
     return this.app.workspace.getLeavesOfType("TwoHopLinksView").length > 0;
   }
 
-  async openTwoHopLinksView() {
+  async openTwoHopLinksView(): Promise<void> {
     const leaf = this.settings.panePositionIsRight
       ? this.app.workspace.getRightLeaf(false)
       : this.app.workspace.getLeftLeaf(false);
+    if (!leaf) return;
+
     leaf.setViewState({ type: "TwoHopLinksView" });
     this.app.workspace.revealLeaf(leaf);
   }
@@ -368,8 +375,7 @@ export default class TwohopLinksPlugin extends Plugin {
       return;
     }
     this.addPaddingBottom();
-    const markdownView: MarkdownView =
-      this.app.workspace.getActiveViewOfType(MarkdownView);
+    const markdownView = this.app.workspace.getActiveViewOfType(MarkdownView);
     const activeFile = markdownView?.file;
     if (!activeFile) {
       return;
@@ -427,7 +433,7 @@ export default class TwohopLinksPlugin extends Plugin {
     tagLinksList: PropertiesLinks[],
     frontmatterKeyLinksList: PropertiesLinks[],
     container: Element
-  ) {
+  ): Promise<void> {
     const showForwardConnectedLinks = this.settings.showForwardConnectedLinks;
     const showBackwardConnectedLinks = this.settings.showBackwardConnectedLinks;
     const showTwohopLinks = this.settings.showTwohopLinks;
@@ -480,12 +486,11 @@ export default class TwohopLinksPlugin extends Plugin {
       ReactDOM.unmountComponentAtNode(container);
       container.remove();
     }
-    (this.app.workspace as any).unregisterHoverLinkSource(HOVER_LINK_ID);
+    unregisterHoverLinkSourceCompat(this.app.workspace, HOVER_LINK_ID);
   }
 
   removeTwohopLinks(): void {
-    const markdownView: MarkdownView =
-      this.app.workspace.getActiveViewOfType(MarkdownView);
+    const markdownView = this.app.workspace.getActiveViewOfType(MarkdownView);
 
     if (markdownView !== null) {
       for (const element of this.getContainerElements(markdownView)) {
@@ -525,7 +530,7 @@ export default class TwohopLinksPlugin extends Plugin {
   removePaddingBottom(): void {
     const existingStyleEl = document.getElementById("twohop-custom-padding");
     if (existingStyleEl) {
-      existingStyleEl.parentNode.removeChild(existingStyleEl);
+      existingStyleEl.remove();
     }
   }
 }

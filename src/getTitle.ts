@@ -1,8 +1,12 @@
 import { FileEntity } from "./model/FileEntity";
 import { removeBlockReference } from "./utils";
 import { TFile } from "obsidian";
+import type TwohopLinksPlugin from "./main";
 
-export async function getTitle(fileEntity: FileEntity) {
+export async function getTitle(
+  this: TwohopLinksPlugin,
+  fileEntity: FileEntity
+): Promise<string> {
   const linkText = removeBlockReference(fileEntity.linkText);
   const fallbackTitle = getFallbackTitle.call(this, fileEntity, linkText);
 
@@ -40,7 +44,11 @@ export async function getTitle(fileEntity: FileEntity) {
   return fallbackTitle;
 }
 
-function getFallbackTitle(fileEntity: FileEntity, linkText: string): string {
+function getFallbackTitle(
+  this: TwohopLinksPlugin,
+  fileEntity: FileEntity,
+  linkText: string
+): string {
   if (this.settings.showFullPathInLinkCards) {
     return removeBlockReference(fileEntity.targetPath ?? linkText).replace(
       /\.md$/i,

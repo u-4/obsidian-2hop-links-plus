@@ -1,5 +1,6 @@
 import { TwohopPluginSettings } from "./TwohopSettingTab";
 import TwohopLinksPlugin from "../main";
+import { isSortOrder } from "./sortOptions";
 
 export const DEFAULT_SETTINGS: TwohopPluginSettings = {
   autoLoadTwoHopLinks: true,
@@ -30,6 +31,9 @@ export async function loadSettings(
 ): Promise<TwohopPluginSettings> {
   const data = await plugin.loadData();
   const settings = Object.assign({}, DEFAULT_SETTINGS, data);
+  if (!isSortOrder(data?.sortOrder)) {
+    settings.sortOrder = DEFAULT_SETTINGS.sortOrder;
+  }
   return settings;
 }
 

@@ -1,36 +1,40 @@
 {
   "name": "2hop-links-plus",
-  "version": "0.39.0",
+  "version": "0.39.1",
   "description": "Related links up to 2 hops away are displayed in a card format, allowing for easy browsing through connections between notes. Each card contains a preview of the corresponding note.",
   "main": "main.js",
   "scripts": {
     "dev": "node esbuild.config.mjs",
     "build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
-    "eslint": "eslint . --ext .js,.jsx,.ts,.tsx",
+    "eslint": "eslint .",
     "prettier": "prettier --write **/*.{tsx,md,ts}"
   },
   "keywords": [],
   "author": "",
   "license": "MIT",
+  "allowScripts": {
+    "esbuild@0.25.5": true
+  },
+  "engines": {
+    "node": ">=20.17.0",
+    "npm": ">=11.0.0"
+  },
   "dependencies": {
-    "@types/react": "^17.0.3",
-    "@types/react-dom": "17.0.2",
-    "obsidian": "obsidianmd/obsidian-api#master",
     "react": "17.0.1",
-    "react-dom": "17.0.1",
-    "tslib": "2.2.0"
+    "react-dom": "17.0.1"
   },
   "devDependencies": {
-    "@babel/preset-react": "7.12.13",
     "@types/node": "^14.14.37",
-    "@typescript-eslint/eslint-plugin": "^4.22.0",
-    "@typescript-eslint/parser": "^4.22.0",
-    "builtin-modules": "3.3.0",
-    "eslint": "^7.25.0",
-    "obsidian": "^0.12.0",
+    "@types/react": "^17.0.3",
+    "@types/react-dom": "17.0.2",
+    "@eslint/js": "9.39.4",
+    "eslint": "9.39.4",
+    "globals": "17.6.0",
+    "obsidian": "1.13.1",
     "prettier": "^2.3.0",
     "tslib": "^2.2.0",
-    "esbuild": "0.14.47",
-    "typescript": "^4.2.4"
+    "esbuild": "0.25.5",
+    "typescript": "^4.2.4",
+    "typescript-eslint": "8.59.1"
   }
 }
