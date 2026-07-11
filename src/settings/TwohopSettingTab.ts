@@ -54,8 +54,8 @@ export class TwohopSettingTab extends PluginSettingTab {
       );
     }
     this.createDropdownSetting(
-      "Sort Order",
-      "",
+      "Default sort order",
+      "Used when a 2-hop links view is opened. The sort menu in the view changes only the current display temporarily.",
       "sortOrder",
       SORT_ORDER_OPTIONS
     );
@@ -170,6 +170,10 @@ export class TwohopSettingTab extends PluginSettingTab {
         dropdown
           .setValue(this.plugin.settings[key] as string)
           .onChange(async (value) => {
+            if (key === "sortOrder") {
+              await this.plugin.setDefaultSortOrder(value);
+              return;
+            }
             this.plugin.settings[key] = value;
             await saveSettings(this.plugin);
             await this.plugin.updateTwoHopLinksView();

@@ -54,9 +54,11 @@ Expected result:
 
 - The toolbar order is search box, compact gear button, then sort-order dropdown.
 - The gear button opens the 2Hop Links Plus settings tab.
-- The dropdown contains every Sort Order option from the settings tab.
+- The dropdown contains every Default sort order option from the settings tab.
 - Changing the toolbar dropdown immediately rebuilds and reorders the cards.
-- The selected value is saved and remains synchronized with the settings tab.
+- Changing the toolbar dropdown does not change the Default sort order in settings.
+- Opening another note resets the toolbar dropdown to the configured default.
+- Restarting Obsidian uses the configured default; the temporary toolbar choice is not saved.
 - The toolbar wraps without horizontal overflow in a narrow separate pane.
 
 ## 4. Sort mode visibility
@@ -65,7 +67,8 @@ Open plugin settings.
 
 Expected result:
 
-The Sort Order dropdown includes these new entries:
+The setting is labeled `Default sort order`, explains that it is used when a
+2-hop view is opened, and includes these entries:
 
 ```text
 Related score

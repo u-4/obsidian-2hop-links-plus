@@ -35,6 +35,9 @@ export default class TwohopLinksPlugin extends Plugin {
   private previousLinks: string[] = [];
   private previousTags: string[] = [];
   private renderGeneration = 0;
+  private temporarySortOrder: string | null = null;
+  private temporarySortOrderPath: string | null = null;
+  private lastRenderedFilePath: string | null = null;
 
   async onload(): Promise<void> {
     console.debug("------ loading obsidian-twohop-links plugin");
@@ -256,12 +259,49 @@ export default class TwohopLinksPlugin extends Plugin {
     }
   }
 
-  async setSortOrder(sortOrder: string): Promise<void> {
+  prepareLinksForFile(file: TFile | null): string {
+    const filePath = file?.path ?? null;
+    if (this.lastRenderedFilePath !== filePath) {
+      this.temporarySortOrder = null;
+      this.temporarySortOrderPath = null;
+      this.lastRenderedFilePath = filePath;
+    }
+
+    const effectiveSortOrder =
+      this.temporarySortOrderPath === filePath && this.temporarySortOrder
+        ? this.temporarySortOrder
+        : this.settings.sortOrder;
+    this.links.settings = {
+      ...this.settings,
+      sortOrder: effectiveSortOrder,
+    };
+    return effectiveSortOrder;
+  }
+
+  async setTemporarySortOrder(sortOrder: string): Promise<void> {
+    if (!isSortOrder(sortOrder)) {
+      return;
+    }
+
+    const activeFile = this.app.workspace.getActiveFile();
+    this.temporarySortOrder =
+      sortOrder === this.settings.sortOrder ? null : sortOrder;
+    this.temporarySortOrderPath = this.temporarySortOrder
+      ? activeFile?.path ?? null
+      : null;
+    this.prepareLinksForFile(activeFile);
+    await this.updateTwoHopLinksView();
+  }
+
+  async setDefaultSortOrder(sortOrder: string): Promise<void> {
     if (!isSortOrder(sortOrder) || this.settings.sortOrder === sortOrder) {
       return;
     }
 
     this.settings.sortOrder = sortOrder;
+    this.temporarySortOrder = null;
+    this.temporarySortOrderPath = null;
+    this.prepareLinksForFile(this.app.workspace.getActiveFile());
     await saveSettings(this);
     await this.updateTwoHopLinksView();
   }
@@ -334,6 +374,7 @@ export default class TwohopLinksPlugin extends Plugin {
     if (!activeFile) {
       return;
     }
+    this.prepareLinksForFile(activeFile);
     const generation = ++this.renderGeneration;
 
     const currentLinks = this.getActiveFileLinks(activeFile);
@@ -413,8 +454,8 @@ export default class TwohopLinksPlugin extends Plugin {
         showPropertiesLinks={showPropertiesLinks}
         autoLoadTwoHopLinks={this.settings.autoLoadTwoHopLinks}
         includeBodyInCardSearch={this.settings.includeBodyInCardSearch}
-        sortOrder={this.settings.sortOrder}
-        onSortOrderChange={this.setSortOrder.bind(this)}
+        sortOrder={this.prepareLinksForFile(this.app.workspace.getActiveFile())}
+        onSortOrderChange={this.setTemporarySortOrder.bind(this)}
         initialBoxCount={this.settings.initialBoxCount}
         initialSectionCount={this.settings.initialSectionCount}
       />,

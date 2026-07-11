@@ -64,6 +64,7 @@ export class SeparatePaneView extends ItemView {
         this.previousTags.sort().join(",") !== currentTags.sort().join(",") ||
         activeFile === null
       ) {
+        this.plugin.prepareLinksForFile(activeFile);
         const generation = ++this.renderGeneration;
         const activePath = activeFile?.path ?? null;
         const {

@@ -358,8 +358,8 @@ export default class TwohopLinksRootView extends React.Component<
           />
           <select
             className="dropdown twohop-links-sort-select"
-            aria-label="Sort order"
-            title="Sort order"
+            aria-label="Temporary sort order for this view"
+            title="Temporary sort order for this view"
             value={this.props.sortOrder}
             onChange={async (event) =>
               this.props.onSortOrderChange(event.currentTarget.value)

@@ -19,7 +19,8 @@
 - Corrected switching between ordinary and pinned main-note tabs.
 - Stabilized section keys and cleared stale async previews while reloading.
 - Replaced the large settings text button with a compact gear icon and added a
-  sort-order dropdown beside the card search box.
+  temporary sort-order dropdown beside the card search box. The settings tab
+  separately controls the default sort order used when a view is opened.
 
 ## Review and testing
 
