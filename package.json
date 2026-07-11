@@ -12,6 +12,9 @@
   "keywords": [],
   "author": "",
   "license": "MIT",
+  "allowScripts": {
+    "esbuild@0.25.5": true
+  },
   "dependencies": {
     "react": "17.0.1",
     "react-dom": "17.0.1"
