@@ -20,6 +20,7 @@ import {
 } from "../search";
 import { SORT_ORDER_OPTIONS } from "../settings/sortOptions";
 import type { SortOrder } from "../settings/sortOptions";
+import { getNextLoadedState } from "./twohopLinksLoadState";
 
 interface TwohopLinksRootViewProps {
   forwardConnectedLinks: FileEntity[];
@@ -40,6 +41,7 @@ interface TwohopLinksRootViewProps {
   showPropertiesLinks: boolean;
   autoLoadTwoHopLinks: boolean;
   includeBodyInCardSearch: boolean;
+  sourcePath: string;
   sortOrder: SortOrder;
   onSortOrderChange: (sortOrder: string) => Promise<void>;
   initialBoxCount: number;
@@ -241,7 +243,7 @@ export default class TwohopLinksRootView extends React.Component<
         displayedBoxCount: this.initialDisplayedBoxCount(),
         displayedSectionCount: this.initialDisplayedSectionCount(),
         prevProps: this.props,
-        isLoaded: this.props.autoLoadTwoHopLinks,
+        isLoaded: getNextLoadedState(prevState.isLoaded, prevProps, this.props),
         resetCounter: prevState.resetCounter + 1,
       }));
       if (this.state.searchInput.trim().length > 0) {
@@ -350,37 +352,43 @@ export default class TwohopLinksRootView extends React.Component<
               this.handleSearchChange(event.currentTarget.value)
             }
           />
-          <button
-            ref={this.settingsButtonRef}
-            className="clickable-icon twohop-links-settings-button"
-            aria-label="Open 2Hop Links Plus settings"
-            title="Open settings"
-            onClick={() => {
-              this.props.app.setting.open();
-              this.props.app.setting.openTabById("2hop-links-plus");
-            }}
-          />
-          <select
-            className="dropdown twohop-links-sort-select"
-            aria-label="Temporary sort order for this view"
-            title="Temporary sort order for this view"
-            value={this.props.sortOrder}
-            onChange={async (event) =>
-              this.props.onSortOrderChange(event.currentTarget.value)
-            }
-          >
-            {Object.entries(SORT_ORDER_OPTIONS).map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </select>
-          {this.state.isPreparingBodySearch && (
-            <span className="twohop-links-search-status">
-              Searching body...
-            </span>
-          )}
+          <div className="twohop-links-toolbar-actions">
+            <button
+              ref={this.settingsButtonRef}
+              className="clickable-icon twohop-links-settings-button"
+              aria-label="Open 2Hop Links Plus settings"
+              title="Open settings"
+              onClick={() => {
+                this.props.app.setting.open();
+                this.props.app.setting.openTabById("2hop-links-plus");
+              }}
+            />
+            <select
+              className="dropdown twohop-links-sort-select"
+              aria-label="Temporary sort order for this view"
+              title="Temporary sort order for this view"
+              value={this.props.sortOrder}
+              onChange={async (event) =>
+                this.props.onSortOrderChange(event.currentTarget.value)
+              }
+            >
+              {Object.entries(SORT_ORDER_OPTIONS).map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
+        {this.state.isPreparingBodySearch && (
+          <div
+            className="twohop-links-search-status"
+            role="status"
+            aria-live="polite"
+          >
+            Searching body...
+          </div>
+        )}
         {showForwardConnectedLinks && (
           <ConnectedLinksView
             fileEntities={filteredForwardConnectedLinks}

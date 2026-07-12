@@ -5,10 +5,9 @@
 - This is a public community fork based on `2hop-links-plus` 0.37.0.
 - The Git history is rooted in the upstream `0.37.0` tag; local improvements are
   maintained on `main`.
-- Version `0.40.0` is the current release candidate. It retains the existing
-  ranking and toolbar behavior while adding startup coordination, graph/result
-  reuse, cooperative cancellation, performance diagnostics, and automated
-  synthetic-Vault tests.
+- Version `0.41.0` is the current release. It retains the 0.40 performance work
+  while adding inline long-note navigation, a responsive toolbar, and stable
+  in-place temporary sorting in a separate pane.
 - The repository is intended for source development, review, and reproducible releases.
 
 ## Confirmed behavior
@@ -38,6 +37,22 @@ active-note target.
 - Automated checks cover startup-delay gating, event coalescing, A → B → A
   result reuse, graph reuse and invalidation, Canvas scan avoidance when hidden,
   and cancellation of a superseded gather.
+
+## Version 0.41.0 acceptance record
+
+- On 2026-07-12, the maintainer requested publication after reporting no
+  problems in the dedicated test-Vault checks for this interface update.
+- Assisted UI checks in Obsidian 1.12.7 confirmed the upper-right control's
+  round trip in both Live Preview and Reading view, cleanup in non-Markdown
+  views, and correct behavior across split leaves.
+- Settings no longer contain the removed left-side Home control; this plugin
+  now owns only the upper-right inline scroll control.
+- The behavior candidate was installed from only `main.js`, `manifest.json`,
+  and `styles.css`, with matching checksums at deployment; release version
+  metadata was finalized afterward.
+- A clean lockfile install, production build, eight automated tests, ESLint,
+  whitespace validation, dependency audit, and the synthetic benchmark all
+  completed successfully before publication.
 
 ## Deployment and rollback
 

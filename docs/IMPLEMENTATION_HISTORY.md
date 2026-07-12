@@ -49,6 +49,23 @@
 - Adds deterministic synthetic-Vault tests, a 3,000-note benchmark, and command
   palette diagnostics for cache builds, hits, and cancellations.
 
+## 0.41.0 interface navigation
+
+- Expands the card-search field into available toolbar space up to approximately
+  five default card widths, while keeping settings and temporary sorting aligned
+  to the right.
+- Adds a double-chevron action to inline Markdown views for moving between the
+  note top and the 2-hop links area in Live Preview and Reading view.
+- Cancels long-note alignment retries when wheel, touch, pointer, or keyboard
+  input shows that the user has taken over scrolling.
+- Refreshes temporary sort changes inside an open separate pane instead of
+  destroying and recreating the pane, preserving its search state and
+  preventing a blank-view race.
+- Preserves a manually loaded card view across temporary sorting when automatic
+  loading is disabled, while still resetting it on a different note.
+- Styles the scroll action as a circular, raised elevator-style control with
+  hover and pressed feedback.
+
 ## Review and testing
 
 - The implementation went through multiple external review and hardening rounds.

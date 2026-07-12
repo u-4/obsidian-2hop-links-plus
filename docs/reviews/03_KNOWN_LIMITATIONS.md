@@ -15,6 +15,8 @@
   case stops the plugin.
 - The optional body-search cache is bounded and in memory. It is rebuilt after
   the plugin process unloads rather than persisted between Obsidian sessions.
+- The scroll control lives in Obsidian's Markdown note view header and is hidden
+  when the user disables view headers.
 - TypeScript strict null checking is enabled, but focused manual tests remain
   necessary for Obsidian workspace transitions that cannot be reproduced by
   static analysis alone.

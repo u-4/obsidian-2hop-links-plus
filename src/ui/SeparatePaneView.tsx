@@ -159,7 +159,6 @@ export class SeparatePaneView extends ItemView {
           return;
         }
 
-        ReactDOM.unmountComponentAtNode(this.containerEl);
         await this.plugin.injectTwohopLinks(
           forwardLinks,
           newLinks,
@@ -167,7 +166,8 @@ export class SeparatePaneView extends ItemView {
           twoHopLinks,
           tagLinksList,
           frontmatterKeyLinksList,
-          this.containerEl
+          this.containerEl,
+          activeFile
         );
 
         this.addLinkEventListeners();
