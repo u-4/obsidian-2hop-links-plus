@@ -44,6 +44,34 @@ Automated release checks confirmed:
   switches build the shared graph once rather than eight times. Wall-clock
   speed varies by machine and is recorded for information only.
 
+## Version 0.41.0 acceptance — 2026-07-12
+
+- Test environment: Obsidian 1.12.7 and the dedicated local test Vault.
+- Installed behavior candidate: only `main.js`, `manifest.json`, and
+  `styles.css` were used; post-copy checksums matched at deployment, before the
+  release version metadata was finalized.
+- Maintainer result: no problems found in the manual checks; publication was
+  requested after confirming the final ownership boundary.
+- Live Preview and Reading view both completed the upper-right control's
+  note-top → inline-results → note-top round trip, including the corresponding
+  accessible destination-label changes.
+- Assisted checks also covered same-leaf cleanup in a non-Markdown view,
+  Markdown/non-Markdown split behavior, and return to one control in the final
+  active Markdown leaf.
+- The removed left-side Home feature is absent from this plugin's settings and
+  runtime UI. The upper-right inline navigation control remains here and is not
+  shown in the separate pane.
+
+Automated release checks confirmed:
+
+- clean installation from the lockfile and a successful production build;
+- all eight automated tests pass, including scroll-navigation state, manual-load
+  preservation during temporary sorting, and performance/coordination coverage;
+- ESLint and whitespace validation complete with no errors;
+- the dependency audit reports zero known vulnerabilities;
+- the deterministic 3,000-note benchmark builds the cached graph once across
+  eight switches (7.41× in this run; elapsed time remains informational).
+
 ## Residual platform-specific risks
 
 Mobile long-press behavior and responsiveness in a substantially larger Vault

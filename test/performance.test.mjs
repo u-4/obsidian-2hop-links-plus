@@ -8,6 +8,11 @@ import { GraphIndexCache } from "../src/graphIndexCache.ts";
 import { prepareGraphOrderForPath } from "../src/ranking.ts";
 import { Links } from "../src/links.ts";
 import {
+  getScrollDestination,
+  getScrollDestinationLabel,
+} from "../src/scrollNavigation.ts";
+import { getNextLoadedState } from "../src/ui/twohopLinksLoadState.ts";
+import {
   createSettings,
   createSyntheticApp,
 } from "./support/synthetic-vault.mjs";
@@ -68,6 +73,76 @@ test("startup refresh cannot be pulled forward by later short delays", () => {
   now = 1900;
   gate.markRefreshStarted();
   assert.equal(gate.getDelay(200), 200);
+});
+
+test("scroll navigation follows the current note position", () => {
+  const viewport = { top: 100, bottom: 700, height: 600 };
+
+  assert.equal(
+    getScrollDestination(
+      0,
+      { top: 100, bottom: 900, height: 800 },
+      viewport
+    ),
+    "links"
+  );
+  assert.equal(
+    getScrollDestination(
+      450,
+      { top: 850, bottom: 1650, height: 800 },
+      viewport
+    ),
+    "links"
+  );
+  assert.equal(
+    getScrollDestination(
+      1800,
+      { top: 110, bottom: 910, height: 800 },
+      viewport
+    ),
+    "top"
+  );
+  assert.equal(
+    getScrollDestination(
+      1800,
+      { top: 250, bottom: 650, height: 400 },
+      viewport
+    ),
+    "top"
+  );
+  assert.equal(
+    getScrollDestination(
+      2200,
+      { top: -500, bottom: 450, height: 950 },
+      viewport
+    ),
+    "top"
+  );
+  assert.equal(getScrollDestinationLabel("links"), "Scroll to 2-hop links");
+  assert.equal(getScrollDestinationLabel("top"), "Scroll to note top");
+});
+
+test("temporary sorting preserves a manually loaded view", () => {
+  const manualView = {
+    sourcePath: "Active.md",
+    autoLoadTwoHopLinks: false,
+  };
+
+  assert.equal(getNextLoadedState(true, manualView, manualView), true);
+  assert.equal(
+    getNextLoadedState(true, manualView, {
+      ...manualView,
+      sourcePath: "Other.md",
+    }),
+    false
+  );
+  assert.equal(
+    getNextLoadedState(false, manualView, {
+      ...manualView,
+      autoLoadTwoHopLinks: true,
+    }),
+    true
+  );
 });
 
 test("GraphIndex is reused and active document order is built on demand", async () => {

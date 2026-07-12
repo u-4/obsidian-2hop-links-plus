@@ -38,6 +38,7 @@ import {
   METADATA_REFRESH_DEBOUNCE_MS,
   StartupRefreshGate,
 } from "./performance";
+import { MarkdownScrollNavigator } from "./scrollNavigation";
 
 const CONTAINER_CLASS = "twohop-links-container";
 export const HOVER_LINK_ID = "2hop-links";
@@ -54,6 +55,7 @@ export default class TwohopLinksPlugin extends Plugin {
   private temporarySortOrderPath: string | null = null;
   private lastRenderedFilePath: string | null = null;
   private refreshTask: DebouncedTask;
+  private scrollNavigator: MarkdownScrollNavigator;
   private readonly startupRefreshGate = new StartupRefreshGate();
   private isUnloaded = false;
 
@@ -64,6 +66,15 @@ export default class TwohopLinksPlugin extends Plugin {
     this.settings = await loadSettings(this);
     this.showLinksInMarkdown = true;
     this.links = new Links(this.app, this.settings);
+    this.scrollNavigator = new MarkdownScrollNavigator(async (view) => {
+      const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
+      if (
+        activeView === view &&
+        !this.settings.showTwoHopLinksInSeparatePane
+      ) {
+        await this.renderTwohopLinks(true);
+      }
+    });
     this.refreshTask = new DebouncedTask({
       onSupersede: () => this.links.cancelActiveGather(),
       onError: (error) => console.error("Error refreshing 2-hop links", error),
@@ -99,6 +110,11 @@ export default class TwohopLinksPlugin extends Plugin {
         "active-leaf-change",
         this.refreshTwohopLinks.bind(this)
       )
+    );
+    this.registerEvent(
+      this.app.workspace.on("layout-change", () => {
+        this.scrollNavigator.prune();
+      })
     );
     this.registerEvent(
       this.app.workspace.on("file-open", async () => {
@@ -405,7 +421,7 @@ export default class TwohopLinksPlugin extends Plugin {
       this.app.workspace.detachLeavesOfType("TwoHopLinksView");
     }
     if (this.settings.showTwoHopLinksInSeparatePane) {
-      this.openTwoHopLinksView();
+      await this.openTwoHopLinksView();
       this.disableLinksInMarkdown();
       this.removePaddingBottom();
     } else {
@@ -444,6 +460,17 @@ export default class TwohopLinksPlugin extends Plugin {
       ? activeFile?.path ?? null
       : null;
     this.prepareLinksForFile(activeFile);
+
+    if (this.settings.showTwoHopLinksInSeparatePane) {
+      const separatePaneLeaf = this.app.workspace
+        .getLeavesOfType("TwoHopLinksView")
+        .find((leaf) => leaf.view instanceof SeparatePaneView);
+      if (separatePaneLeaf?.view instanceof SeparatePaneView) {
+        await separatePaneLeaf.view.updateOrForceUpdate(true);
+        return;
+      }
+    }
+
     await this.updateTwoHopLinksView();
   }
 
@@ -470,25 +497,40 @@ export default class TwohopLinksPlugin extends Plugin {
       : this.app.workspace.getLeftLeaf(false);
     if (!leaf) return;
 
-    leaf.setViewState({ type: "TwoHopLinksView" });
-    this.app.workspace.revealLeaf(leaf);
+    await leaf.setViewState({ type: "TwoHopLinksView" });
+    await this.app.workspace.revealLeaf(leaf);
   }
 
-  private getContainerElements(markdownView: MarkdownView): Element[] {
-    const elements = markdownView.containerEl.querySelectorAll(
-      ".markdown-source-view .CodeMirror-lines, .markdown-preview-view, .markdown-source-view .cm-sizer"
+  private getContainerHostElements(markdownView: MarkdownView): HTMLElement[] {
+    return Array.from(
+      markdownView.containerEl.querySelectorAll<HTMLElement>(
+        ".markdown-source-view .CodeMirror-lines, .markdown-preview-view, .markdown-source-view .cm-sizer"
+      )
+    ).filter((element) => !element.closest(".markdown-embed-content"));
+  }
+
+  private findDirectContainer(host: HTMLElement): HTMLElement | null {
+    return (
+      Array.from(host.children).find((child) =>
+        child.classList.contains(CONTAINER_CLASS)
+      ) as HTMLElement | undefined
+    ) ?? null;
+  }
+
+  private getContainerElements(markdownView: MarkdownView): HTMLElement[] {
+    return this.getContainerHostElements(markdownView).map(
+      (host) =>
+        this.findDirectContainer(host) ??
+        host.createDiv({ cls: CONTAINER_CLASS })
     );
+  }
 
-    const containers: Element[] = [];
-    for (let i = 0; i < elements.length; i++) {
-      const el = elements.item(i);
-      const container =
-        el.querySelector("." + CONTAINER_CLASS) ||
-        el.createDiv({ cls: CONTAINER_CLASS });
-      containers.push(container);
-    }
-
-    return containers;
+  private getExistingContainerElements(
+    markdownView: MarkdownView
+  ): HTMLElement[] {
+    return this.getContainerHostElements(markdownView)
+      .map((host) => this.findDirectContainer(host))
+      .filter((container): container is HTMLElement => container !== null);
   }
 
   private getActiveFileLinks(file: TFile | null): string[] {
@@ -520,15 +562,17 @@ export default class TwohopLinksPlugin extends Plugin {
   }
 
   async renderTwohopLinks(isForceUpdate: boolean): Promise<void> {
-    if (this.settings.showTwoHopLinksInSeparatePane) {
-      return;
-    }
-    this.addPaddingBottom();
     const markdownView = this.app.workspace.getActiveViewOfType(MarkdownView);
     const activeFile = markdownView?.file;
     if (!activeFile) {
+      this.scrollNavigator.prune();
       return;
     }
+    if (this.settings.showTwoHopLinksInSeparatePane) {
+      this.scrollNavigator.removeAll();
+      return;
+    }
+    this.addPaddingBottom();
     this.prepareLinksForFile(activeFile);
     const generation = ++this.renderGeneration;
 
@@ -559,8 +603,11 @@ export default class TwohopLinksPlugin extends Plugin {
       } = gatheredLinks;
 
       const currentActiveFile = this.app.workspace.getActiveFile();
+      const currentActiveView =
+        this.app.workspace.getActiveViewOfType(MarkdownView);
       if (
         generation !== this.renderGeneration ||
+        currentActiveView !== markdownView ||
         currentActiveFile?.path !== activeFile.path
       ) {
         return;
@@ -574,13 +621,16 @@ export default class TwohopLinksPlugin extends Plugin {
           twoHopLinks,
           tagLinksList,
           frontmatterKeyLinksList,
-          container
+          container,
+          activeFile
         );
       }
 
       this.previousLinks = currentLinks;
       this.previousTags = currentTags;
     }
+
+    this.scrollNavigator.ensure(markdownView);
   }
 
   async injectTwohopLinks(
@@ -590,7 +640,8 @@ export default class TwohopLinksPlugin extends Plugin {
     twoHopLinks: TwohopLink[],
     tagLinksList: PropertiesLinks[],
     frontmatterKeyLinksList: PropertiesLinks[],
-    container: Element
+    container: Element,
+    sourceFile: TFile
   ): Promise<void> {
     const showForwardConnectedLinks = this.settings.showForwardConnectedLinks;
     const showBackwardConnectedLinks = this.settings.showBackwardConnectedLinks;
@@ -618,7 +669,8 @@ export default class TwohopLinksPlugin extends Plugin {
         showPropertiesLinks={showPropertiesLinks}
         autoLoadTwoHopLinks={this.settings.autoLoadTwoHopLinks}
         includeBodyInCardSearch={this.settings.includeBodyInCardSearch}
-        sortOrder={this.prepareLinksForFile(this.app.workspace.getActiveFile())}
+        sourcePath={sourceFile.path}
+        sortOrder={this.prepareLinksForFile(sourceFile)}
         onSortOrderChange={this.setTemporarySortOrder.bind(this)}
         initialBoxCount={this.settings.initialBoxCount}
         initialSectionCount={this.settings.initialSectionCount}
@@ -637,38 +689,20 @@ export default class TwohopLinksPlugin extends Plugin {
     this.refreshTask.cancel();
     this.links.cancelActiveGather();
     this.removeTwohopLinks();
-    const container = this.app.workspace.containerEl.querySelector(
-      ".twohop-links-container"
-    );
-    if (container) {
-      ReactDOM.unmountComponentAtNode(container);
-      container.remove();
-    }
+    this.removePaddingBottom();
     unregisterHoverLinkSourceCompat(this.app.workspace, HOVER_LINK_ID);
   }
 
   removeTwohopLinks(): void {
-    const markdownView = this.app.workspace.getActiveViewOfType(MarkdownView);
+    this.scrollNavigator.removeAll();
+    this.app.workspace.iterateAllLeaves((leaf) => {
+      if (!(leaf.view instanceof MarkdownView)) return;
 
-    if (markdownView !== null) {
-      for (const element of this.getContainerElements(markdownView)) {
-        const container = element.querySelector("." + CONTAINER_CLASS);
-        if (container) {
-          container.remove();
-        }
+      for (const container of this.getExistingContainerElements(leaf.view)) {
+        ReactDOM.unmountComponentAtNode(container);
+        container.remove();
       }
-
-      if (markdownView.previewMode !== null) {
-        const previewElements = Array.from(
-          markdownView.previewMode.containerEl.querySelectorAll(
-            "." + CONTAINER_CLASS
-          )
-        );
-        for (const element of previewElements) {
-          element.remove();
-        }
-      }
-    }
+    });
   }
 
   addPaddingBottom(): void {

@@ -54,13 +54,23 @@ Open `Active.md` or another note with 2-hop results.
 Expected result:
 
 - The toolbar order is search box, compact gear button, then sort-order dropdown.
+- With enough width, the gear button and sort dropdown align to the right edge,
+  while the search box fills the available space before them.
+- The search box stops growing at 727 px, approximately five default card widths.
 - The gear button opens the 2Hop Links Plus settings tab.
 - The dropdown contains every Default sort order option from the settings tab.
 - Changing the toolbar dropdown immediately rebuilds and reorders the cards.
 - Changing the toolbar dropdown does not change the Default sort order in settings.
 - Opening another note resets the toolbar dropdown to the configured default.
 - Restarting Obsidian uses the configured default; the temporary toolbar choice is not saved.
-- The toolbar wraps without horizontal overflow in a narrow separate pane.
+- In a narrow main or separate pane, the toolbar wraps without horizontal
+  overflow and all three controls remain usable.
+- In a separate pane, changing the temporary sort order keeps that pane open;
+  its toolbar, current search query, and cards remain visible while the cards
+  reorder in place.
+- With `Auto-load 2hop links` disabled, manually show the cards and then change
+  the temporary sort order. The cards remain visible while they reorder; opening
+  a different note resets the manual-load state as before.
 
 ## 4. Sort mode visibility
 
@@ -266,3 +276,44 @@ On a larger real vault:
   may increase during rapid switching and are not errors.
 - With `Show Back Links` disabled on a Markdown note, Canvas files are not read
   merely to build hidden backlinks.
+
+## 16. Note scroll navigation
+
+Use the bundled `LongScrollActive.md` fixture with
+`Show 2hop links in separate pane` disabled.
+
+Expected result:
+
+- One vertical double-chevron action appears at the upper-right of the Markdown
+  note view. Its accessible label is `Scroll to 2-hop links` near the note top.
+- From the note top or middle, activating the action scrolls the same note pane
+  to the beginning of its 2-hop links area.
+- In the 2-hop links area, the label changes to `Scroll to note top`; activating
+  it returns the same note pane to the top.
+- The round trip works repeatedly in both Live Preview and Reading view, and
+  changing view mode does not duplicate the action.
+- Searching or changing the temporary sort order does not remove or duplicate
+  the action.
+- With separate-pane display enabled, the action is absent from both the main
+  note and the separate 2-hop pane.
+
+## 17. Scroll-control ownership and cleanup
+
+Use a Markdown note with the Obsidian view header visible.
+
+Expected result:
+
+- The scroll action is a clearly visible circular button with a raised surface,
+  accent-colored outline, and pressed feedback reminiscent of an elevator
+  button.
+- 2Hop Links Plus adds no upper-left Home control and exposes no Home-button
+  settings.
+- Switching a Markdown leaf to the bundled `CanvasActive.canvas` fixture or
+  another non-Markdown view removes the disconnected upper-right action from
+  that leaf.
+- In a Markdown/Canvas split, the Markdown side keeps one upper-right action
+  while the Canvas side has no `Scroll to 2-hop links` or `Scroll to note top`
+  action.
+- Returning to a Markdown note restores exactly one upper-right action.
+- With separate-pane display enabled, the action is absent from both the main
+  Markdown note and the separate 2-hop pane.
