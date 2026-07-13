@@ -17,6 +17,10 @@
   the plugin process unloads rather than persisted between Obsidian sessions.
 - The scroll control lives in Obsidian's Markdown note view header and is hidden
   when the user disables view headers.
+- Inline injection waits for a newly mounted Markdown host for at most 120
+  animation frames. Background windows may pause or throttle animation frames;
+  the check resumes when that window can render and is cancelled if its active
+  leaf or file changes.
 - TypeScript strict null checking is enabled, but focused manual tests remain
   necessary for Obsidian workspace transitions that cannot be reproduced by
   static analysis alone.

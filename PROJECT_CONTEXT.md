@@ -10,6 +10,26 @@
   in-place temporary sorting in a separate pane.
 - The repository is intended for source development, review, and reproducible releases.
 
+## Unreleased Markdown host readiness fix
+
+- Inline rendering now waits for the active Markdown view's real injection host
+  when Obsidian is still replacing a custom `ItemView` with `MarkdownView`.
+- The wait is bounded, uses the target element's `ownerDocument.defaultView`,
+  and is cancelled when the active leaf or file changes, inline display is
+  disabled, separate-pane mode is selected, or the plugin unloads.
+- Readiness follows only the currently selected Markdown mode, while injection
+  and cleanup still cover both source and preview hosts. This prevents an old
+  hidden host from completing the wait and prevents hidden stale content from
+  reappearing after a mode switch.
+- The plugin does not emit duplicate `file-open` or `active-leaf-change` events.
+  This keeps the fix independent of PalmWiki Home and applicable to any custom
+  view that opens a Markdown note through Obsidian's public APIs.
+- Assisted checks in Obsidian 1.12.7 covered Live Preview, Reading view, Source
+  mode, switching to a different note without hidden stale cards, all-mode
+  cleanup while separate-pane display was enabled, a five-second mode switch
+  after plugin disable, and clean restoration after re-enabling the plugin.
+  Split and pop-out checks remain for a later compatibility pass.
+
 ## Confirmed behavior
 
 The maintainer has confirmed that switching ordinary or pinned note tabs updates

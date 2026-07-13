@@ -66,6 +66,24 @@
 - Styles the scroll action as a circular, raised elevator-style control with
   hover and pressed feedback.
 
+## Unreleased Markdown host readiness
+
+- Defers inline injection when the active Markdown view or its Live Preview /
+  Reading view host has not been attached yet, instead of recording an empty
+  render as complete.
+- Uses a bounded animation-frame retry owned by the active leaf's window, and
+  cancels stale retries when the active leaf leaves Markdown, the file changes,
+  inline display is disabled, separate-pane mode is enabled, or the plugin
+  unloads. Readiness follows the current Markdown source/preview mode so an old
+  hidden host cannot complete the retry.
+- Keeps injection and removal on the all-mode host selector used by 0.41.0, so
+  both visible and hidden source/preview hosts receive the current result and
+  are cleared together during mode changes or unload.
+- Keeps normal Obsidian navigation events single-shot; no PalmWiki-specific
+  imports, DOM classes, settings, or runtime dependency were added.
+- Adds deterministic tests for host appearance, superseding navigation,
+  cancellation, and retry exhaustion.
+
 ## Review and testing
 
 - The implementation went through multiple external review and hardening rounds.

@@ -54,6 +54,18 @@
 28. Markdownと `CanvasActive.canvas` を左右に分割し、Markdown側には右上往復
     アイコンが1個残り、Canvas側には表示されないことを確認する。分割を閉じても
     Markdown側のアイコンが重複しないことを確認する。
+29. PalmWiki Homeなどのcustom viewが利用できる場合、その画面から `Active.md` を
+    同じleafへ初回表示する。Live Preview → Reading view → Source mode → Live Previewと
+    切り替え、各段階で現行ノートの本文2-hop、固有カード、右上アイコン1個を確認する。
+30. `Active.md` とカード構成が異なる `BodyOnlyCandidate.md` をReading viewで開き、
+    Live Previewへ戻る。`BodyOnlyCandidate.md` の結果だけがあり、前ノートのhidden
+    containerや古いカードが復活しないことを確認する。
+31. Reading view中に `Show 2hop links in separate pane` を有効にし、Live Previewへ
+    切り替えて本文2-hopと右上アイコンがともに0であることを確認する。逆方向も確認し、
+    試験後は設定を無効へ戻して現行ノートの結果が1組だけ復帰することを確認する。
+32. SourceとReadingの両方を一度表示した後、Community Pluginsから本プラグインを
+    無効化して反対modeへ切り替える。3〜5秒待っても本文2-hopと右上アイコンが復活
+    しないことを確認し、最後にプラグインを再有効化する。
 
 > 既存のVault内のサブフォルダへこの試験データをコピーする場合、Canvasの
 > `file` はVaultルートからのパスである必要があります。たとえば配置先が
