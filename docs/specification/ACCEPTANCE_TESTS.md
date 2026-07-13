@@ -289,9 +289,13 @@ Expected result:
 - From the note top or middle, activating the action scrolls the same note pane
   to the beginning of its 2-hop links area.
 - In the 2-hop links area, the label changes to `Scroll to note top`; activating
-  it returns the same note pane to the top.
-- The round trip works repeatedly in both Live Preview and Reading view, and
-  changing view mode does not duplicate the action.
+  it returns the same note pane to the top. After at most 1.5 seconds, the first
+  note heading is visible and the scroll must not remain at an intermediate
+  position.
+- The round trip works repeatedly in Live Preview, Reading view, and Source
+  mode, and changing view mode does not duplicate the action.
+- If wheel, touch, pointer, or keyboard input takes over during the return, the
+  plugin cancels its pending correction and does not fight the manual scroll.
 - Searching or changing the temporary sort order does not remove or duplicate
   the action.
 - With separate-pane display enabled, the action is absent from both the main
@@ -317,3 +321,34 @@ Expected result:
 - Returning to a Markdown note restores exactly one upper-right action.
 - With separate-pane display enabled, the action is absent from both the main
   Markdown note and the separate 2-hop pane.
+
+## 18. Opening Markdown from a custom view
+
+Use PalmWiki Home or another navigable custom `ItemView` with inline 2-hop
+display enabled.
+
+Expected result:
+
+- Opening a note from a normal card, a full-text search result, a recent/title
+  suggestion, and a table row renders 2-hop links in the resulting Markdown
+  view without requiring a second tab switch.
+- Opening a note from Obsidian's File Explorer while the custom view is active
+  also renders 2-hop links.
+- Live Preview, Source mode, and Reading view each render into the current view
+  rather than a detached predecessor.
+- Switching Live Preview -> Reading view -> Live Preview keeps exactly one
+  current 2-hop result in each mode and never revives another file's hidden
+  result.
+- Rapidly opening A, then B before A finishes mounting, never injects A's cards
+  into B and leaves no delayed retry for A.
+- Closing the leaf, enabling `Show 2hop links in separate pane`, or unloading
+  the plugin during the wait leaves no inline container or pending retry.
+- Enable `Show 2hop links in separate pane` while Reading view is active and
+  then return to Live Preview; repeat in the reverse direction. Inline content
+  and the upper-right action remain absent until the setting is disabled, then
+  exactly one current result returns.
+- After both source and preview modes have been shown, disable the plugin from
+  Community Plugins, switch to the other mode, and wait three to five seconds.
+  No hidden content or action returns. Re-enable the plugin after the test.
+- Navigation history contains one normal open operation; the plugin does not
+  trigger duplicate `file-open` or `active-leaf-change` events.

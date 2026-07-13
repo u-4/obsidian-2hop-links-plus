@@ -3,6 +3,8 @@ import type { MarkdownView } from "obsidian";
 const RESULTS_CONTAINER_CLASS = "twohop-links-container";
 const ACTION_CLASS = "twohop-links-scroll-toggle";
 const SCROLL_TOP_THRESHOLD_PX = 8;
+const TOP_SETTLE_DELAYS_MS = [500, 900, 1400];
+const REDUCED_MOTION_SETTLE_DELAYS_MS = [0, 80];
 
 export interface VerticalBounds {
   top: number;
@@ -15,6 +17,9 @@ interface ManagedScrollAction {
   element: HTMLElement;
   frameId: number | null;
   settleTimeoutIds: number[];
+  settleGeneration: number;
+  filePath: string | null;
+  mode: string;
   onScroll: EventListener;
   onUserScrollIntent: EventListener;
 }
@@ -66,6 +71,13 @@ export class MarkdownScrollNavigator {
     this.pruneDisconnectedViews();
     const existing = this.actions.get(view);
     if (existing) {
+      const filePath = view.file?.path ?? null;
+      const mode = view.getMode();
+      if (existing.filePath !== filePath || existing.mode !== mode) {
+        this.clearSettleTimeouts(existing);
+      }
+      existing.filePath = filePath;
+      existing.mode = mode;
       this.updateAction(existing);
       return;
     }
@@ -84,6 +96,9 @@ export class MarkdownScrollNavigator {
       element,
       frameId: null,
       settleTimeoutIds: [],
+      settleGeneration: 0,
+      filePath: view.file?.path ?? null,
+      mode: view.getMode(),
       onScroll: () => this.scheduleActionUpdate(action),
       onUserScrollIntent: () => this.clearSettleTimeouts(action),
     };
@@ -109,6 +124,12 @@ export class MarkdownScrollNavigator {
     this.pruneDisconnectedViews();
   }
 
+  cancelPending(): void {
+    for (const action of this.actions.values()) {
+      this.clearSettleTimeouts(action);
+    }
+  }
+
   remove(view: MarkdownView): void {
     const action = this.actions.get(view);
     if (!action) return;
@@ -125,11 +146,7 @@ export class MarkdownScrollNavigator {
     if (action.frameId != null && ownerWindow) {
       ownerWindow.cancelAnimationFrame(action.frameId);
     }
-    if (ownerWindow) {
-      for (const timeoutId of action.settleTimeoutIds) {
-        ownerWindow.clearTimeout(timeoutId);
-      }
-    }
+    this.clearSettleTimeouts(action);
     action.element.remove();
     this.actions.delete(view);
   }
@@ -200,10 +217,9 @@ export class MarkdownScrollNavigator {
     const behavior: ScrollBehavior = reduceMotion ? "auto" : "smooth";
 
     if (destination === "top") {
-      if (scrollHost && typeof scrollHost.scrollTo === "function") {
-        scrollHost.scrollTo({ top: 0, behavior });
-      } else {
-        view.currentMode.applyScroll(0);
+      this.scrollToNoteTop(view, scrollHost, behavior);
+      if (action) {
+        this.scheduleTopAlignment(action, reduceMotion);
       }
     } else {
       target.scrollIntoView({
@@ -224,7 +240,66 @@ export class MarkdownScrollNavigator {
     }
   }
 
+  private scrollToNoteTop(
+    view: MarkdownView,
+    scrollHost: HTMLElement | null,
+    behavior: ScrollBehavior
+  ): void {
+    if (scrollHost && typeof scrollHost.scrollTo === "function") {
+      scrollHost.scrollTo({ top: 0, behavior });
+      return;
+    }
+
+    view.currentMode.applyScroll(0);
+  }
+
+  private scheduleTopAlignment(
+    action: ManagedScrollAction,
+    reduceMotion: boolean
+  ): void {
+    const ownerWindow = action.view.containerEl.ownerDocument.defaultView;
+    if (!ownerWindow) return;
+
+    const expectedFilePath = action.view.file?.path ?? null;
+    const expectedMode = action.view.getMode();
+    const delays = reduceMotion
+      ? REDUCED_MOTION_SETTLE_DELAYS_MS
+      : TOP_SETTLE_DELAYS_MS;
+    const settleGeneration = ++action.settleGeneration;
+
+    action.settleTimeoutIds = delays.map((delay) =>
+      ownerWindow.setTimeout(() => {
+        const currentAction = this.actions.get(action.view);
+        if (
+          currentAction !== action ||
+          action.settleGeneration !== settleGeneration
+        ) {
+          return;
+        }
+        if (
+          (action.view.file?.path ?? null) !== expectedFilePath ||
+          action.view.getMode() !== expectedMode
+        ) {
+          this.clearSettleTimeouts(action);
+          return;
+        }
+
+        const target = this.findVisibleResultsContainer(action.view);
+        if (!target) return;
+
+        const scrollHost = this.findScrollHost(target);
+        const scrollTop =
+          scrollHost?.scrollTop ?? action.view.currentMode.getScroll();
+        if (scrollTop > SCROLL_TOP_THRESHOLD_PX) {
+          this.scrollToNoteTop(action.view, scrollHost, "auto");
+        }
+        this.updateAction(action);
+      }, delay)
+    );
+  }
+
   private clearSettleTimeouts(action: ManagedScrollAction): void {
+    action.settleGeneration += 1;
     const ownerWindow = action.view.containerEl.ownerDocument.defaultView;
     if (ownerWindow) {
       for (const timeoutId of action.settleTimeoutIds) {
@@ -243,10 +318,25 @@ export class MarkdownScrollNavigator {
     if (!ownerWindow) return;
 
     const delays = reduceMotion ? [0, 80] : [250, 650, 1100];
+    const expectedFilePath = action.view.file?.path ?? null;
+    const expectedMode = action.view.getMode();
+    const settleGeneration = ++action.settleGeneration;
     action.settleTimeoutIds = delays.map((delay) =>
       ownerWindow.setTimeout(() => {
         const currentAction = this.actions.get(action.view);
-        if (currentAction !== action) return;
+        if (
+          currentAction !== action ||
+          action.settleGeneration !== settleGeneration
+        ) {
+          return;
+        }
+        if (
+          (action.view.file?.path ?? null) !== expectedFilePath ||
+          action.view.getMode() !== expectedMode
+        ) {
+          this.clearSettleTimeouts(action);
+          return;
+        }
 
         const target = this.findVisibleResultsContainer(action.view);
         if (!target) return;

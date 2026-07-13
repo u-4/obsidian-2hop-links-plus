@@ -72,6 +72,31 @@ Automated release checks confirmed:
 - the deterministic 3,000-note benchmark builds the cached graph once across
   eight switches (7.41× in this run; elapsed time remains informational).
 
+## Version 0.41.1 acceptance — 2026-07-13
+
+- Test environment: Obsidian 1.12.7 and the dedicated local test Vault.
+- The installed candidate used only `main.js`, `manifest.json`, and
+  `styles.css`; source and destination checksums matched after deployment.
+- Before the fix, assisted UI testing reproduced an upper-right return that
+  remained around `padding line 14` instead of reaching the first heading.
+- After the fix, Live Preview, Reading view, and Source mode each completed
+  three inline-results → note-top round trips, with the first heading visible
+  after every return.
+- A manual scroll during a pending return remained in control after the final
+  correction window, and the test ended with one action, Live Preview active,
+  the plugin enabled, and the note at the top.
+- The Markdown-host candidate also passed first-open checks from PalmWiki Home
+  cards, tables, recent notes, candidates, and body search, as well as
+  Obsidian's File Explorer and Search. It passed mode changes, Back/Forward,
+  rapid target switching, all-mode cleanup with separate-pane display, and
+  plugin disable/re-enable checks without stale cards or duplicate actions.
+- The maintainer approved proceeding to release after the test-Vault checks.
+
+Automated release checks include deterministic readiness, cancellation,
+interrupted smooth-scroll, and manual-takeover coverage. Pop-out windows and a
+macOS reduced-motion configuration were not separately reproduced for this
+patch and remain non-blocking focused follow-up checks.
+
 ## Residual platform-specific risks
 
 Mobile long-press behavior and responsiveness in a substantially larger Vault

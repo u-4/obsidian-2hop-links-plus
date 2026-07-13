@@ -39,8 +39,16 @@ import {
   StartupRefreshGate,
 } from "./performance";
 import { MarkdownScrollNavigator } from "./scrollNavigation";
+import {
+  BoundedAnimationFrameRetry,
+  getAllMarkdownHostElements,
+  getCurrentMarkdownHostElements,
+  shouldContinueMarkdownHostRetry,
+} from "./markdownHostReadiness";
 
 const CONTAINER_CLASS = "twohop-links-container";
+// Covers roughly one to two seconds on common 60-120 Hz displays.
+const MARKDOWN_HOST_RETRY_FRAMES = 120;
 export const HOVER_LINK_ID = "2hop-links";
 
 export default class TwohopLinksPlugin extends Plugin {
@@ -56,6 +64,7 @@ export default class TwohopLinksPlugin extends Plugin {
   private lastRenderedFilePath: string | null = null;
   private refreshTask: DebouncedTask;
   private scrollNavigator: MarkdownScrollNavigator;
+  private readonly markdownHostRetry = new BoundedAnimationFrameRetry();
   private readonly startupRefreshGate = new StartupRefreshGate();
   private isUnloaded = false;
 
@@ -113,6 +122,7 @@ export default class TwohopLinksPlugin extends Plugin {
     );
     this.registerEvent(
       this.app.workspace.on("layout-change", () => {
+        this.scrollNavigator.cancelPending();
         this.scrollNavigator.prune();
       })
     );
@@ -148,6 +158,7 @@ export default class TwohopLinksPlugin extends Plugin {
 
   onunload(): void {
     this.isUnloaded = true;
+    this.markdownHostRetry.cancel();
     this.refreshTask.cancel();
     this.links.cancelPendingCalculations();
     this.disableLinksInMarkdown();
@@ -293,6 +304,7 @@ export default class TwohopLinksPlugin extends Plugin {
       return;
     }
 
+    this.scrollNavigator.cancelPending();
     if (this.showLinksInMarkdown) {
       this.scheduleRefresh(true, this.getRefreshDebounceMs());
     }
@@ -502,11 +514,53 @@ export default class TwohopLinksPlugin extends Plugin {
   }
 
   private getContainerHostElements(markdownView: MarkdownView): HTMLElement[] {
-    return Array.from(
-      markdownView.containerEl.querySelectorAll<HTMLElement>(
-        ".markdown-source-view .CodeMirror-lines, .markdown-preview-view, .markdown-source-view .cm-sizer"
-      )
-    ).filter((element) => !element.closest(".markdown-embed-content"));
+    return getAllMarkdownHostElements(markdownView.containerEl);
+  }
+
+  private isMarkdownHostReady(markdownView: MarkdownView): boolean {
+    return (
+      markdownView.containerEl.isConnected &&
+      getCurrentMarkdownHostElements(
+        markdownView.containerEl,
+        markdownView.getMode()
+      ).length > 0
+    );
+  }
+
+  private scheduleMarkdownHostRetry(
+    leaf: WorkspaceLeaf,
+    activeFile: TFile
+  ): void {
+    const ownerWindow = leaf.view.containerEl.ownerDocument.defaultView;
+    if (!ownerWindow) {
+      return;
+    }
+
+    this.markdownHostRetry.schedule({
+      frameApi: ownerWindow,
+      maxFrames: MARKDOWN_HOST_RETRY_FRAMES,
+      shouldContinue: () => {
+        return shouldContinueMarkdownHostRetry({
+          isUnloaded: this.isUnloaded,
+          showLinksInMarkdown: this.showLinksInMarkdown,
+          showInSeparatePane: this.settings.showTwoHopLinksInSeparatePane,
+          isActiveLeaf: this.app.workspace.activeLeaf === leaf,
+          leafViewType: leaf.getViewState().type,
+          activeFilePath: this.app.workspace.getActiveFile()?.path ?? null,
+          expectedFilePath: activeFile.path,
+        });
+      },
+      isReady: () => {
+        const currentView =
+          this.app.workspace.getActiveViewOfType(MarkdownView);
+        return Boolean(
+          currentView &&
+          currentView.file?.path === activeFile.path &&
+          this.isMarkdownHostReady(currentView)
+        );
+      },
+      onReady: () => this.scheduleRefresh(true, 0),
+    });
   }
 
   private findDirectContainer(host: HTMLElement): HTMLElement | null {
@@ -562,16 +616,33 @@ export default class TwohopLinksPlugin extends Plugin {
   }
 
   async renderTwohopLinks(isForceUpdate: boolean): Promise<void> {
+    const activeLeaf = this.app.workspace.activeLeaf;
     const markdownView = this.app.workspace.getActiveViewOfType(MarkdownView);
-    const activeFile = markdownView?.file;
-    if (!activeFile) {
+    const activeFile = this.app.workspace.getActiveFile();
+    if (!activeLeaf || !activeFile || activeFile.extension !== "md") {
+      this.markdownHostRetry.cancel();
       this.scrollNavigator.prune();
       return;
     }
     if (this.settings.showTwoHopLinksInSeparatePane) {
+      this.markdownHostRetry.cancel();
       this.scrollNavigator.removeAll();
       return;
     }
+    if (!markdownView && activeLeaf.getViewState().type !== "markdown") {
+      this.markdownHostRetry.cancel();
+      this.scrollNavigator.prune();
+      return;
+    }
+    if (
+      !markdownView ||
+      markdownView.file?.path !== activeFile.path ||
+      !this.isMarkdownHostReady(markdownView)
+    ) {
+      this.scheduleMarkdownHostRetry(activeLeaf, activeFile);
+      return;
+    }
+    this.markdownHostRetry.cancel();
     this.addPaddingBottom();
     this.prepareLinksForFile(activeFile);
     const generation = ++this.renderGeneration;
@@ -613,7 +684,14 @@ export default class TwohopLinksPlugin extends Plugin {
         return;
       }
 
-      for (const container of this.getContainerElements(markdownView)) {
+      if (!this.isMarkdownHostReady(markdownView)) {
+        this.scheduleMarkdownHostRetry(activeLeaf, activeFile);
+        return;
+      }
+      this.markdownHostRetry.cancel();
+      const containers = this.getContainerElements(markdownView);
+
+      for (const container of containers) {
         await this.injectTwohopLinks(
           forwardLinks,
           newLinks,
@@ -686,6 +764,7 @@ export default class TwohopLinksPlugin extends Plugin {
 
   disableLinksInMarkdown(): void {
     this.showLinksInMarkdown = false;
+    this.markdownHostRetry.cancel();
     this.refreshTask.cancel();
     this.links.cancelActiveGather();
     this.removeTwohopLinks();

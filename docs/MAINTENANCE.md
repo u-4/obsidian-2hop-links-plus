@@ -47,6 +47,9 @@ confirm the following interaction behavior:
 - Rapid tab switching settles on the last selected note without a stale render.
 - Returning to a recently viewed note increases result-cache hits rather than
   rebuilding the entire graph.
+- Opening a Markdown note from a custom view (including through Obsidian's File
+  Explorer while that view is active) renders inline 2-hop links on the first
+  navigation and never injects into a stale leaf.
 
 ## Deploy to a test or personal Vault
 

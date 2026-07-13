@@ -5,10 +5,41 @@
 - This is a public community fork based on `2hop-links-plus` 0.37.0.
 - The Git history is rooted in the upstream `0.37.0` tag; local improvements are
   maintained on `main`.
-- Version `0.41.0` is the current release. It retains the 0.40 performance work
-  while adding inline long-note navigation, a responsive toolbar, and stable
-  in-place temporary sorting in a separate pane.
+- Version `0.41.1` is the current release. It retains the 0.41 interface work
+  while fixing first-open inline rendering from custom views and interrupted
+  returns to the top of long notes.
 - The repository is intended for source development, review, and reproducible releases.
+
+## 0.41.1 Markdown host readiness fix
+
+- Inline rendering now waits for the active Markdown view's real injection host
+  when Obsidian is still replacing a custom `ItemView` with `MarkdownView`.
+- The wait is bounded, uses the target element's `ownerDocument.defaultView`,
+  and is cancelled when the active leaf or file changes, inline display is
+  disabled, separate-pane mode is selected, or the plugin unloads.
+- Readiness follows only the currently selected Markdown mode, while injection
+  and cleanup still cover both source and preview hosts. This prevents an old
+  hidden host from completing the wait and prevents hidden stale content from
+  reappearing after a mode switch.
+- The plugin does not emit duplicate `file-open` or `active-leaf-change` events.
+  This keeps the fix independent of PalmWiki Home and applicable to any custom
+  view that opens a Markdown note through Obsidian's public APIs.
+- Assisted checks in Obsidian 1.12.7 covered Live Preview, Reading view, Source
+  mode, switching to a different note without hidden stale cards, all-mode
+  cleanup while separate-pane display was enabled, a five-second mode switch
+  after plugin disable, and clean restoration after re-enabling the plugin.
+  Split and pop-out checks remain for a later compatibility pass.
+
+## 0.41.1 scroll-to-top reliability fix
+
+- The upper-right scroll action keeps its smooth initial return, then performs a
+  bounded position check so a CodeMirror reflow or interrupted native smooth
+  scroll cannot leave the note at an intermediate position.
+- Follow-up corrections are limited to the same file and Markdown mode and are
+  cancelled as soon as wheel, touch, pointer, or keyboard input shows that the
+  user has taken over scrolling.
+- Deterministic tests simulate an interrupted smooth return and verify both the
+  final top alignment and cancellation after manual scroll intent.
 
 ## Confirmed behavior
 
@@ -53,6 +84,18 @@ active-note target.
 - A clean lockfile install, production build, eight automated tests, ESLint,
   whitespace validation, dependency audit, and the synthetic benchmark all
   completed successfully before publication.
+
+## Version 0.41.1 acceptance record
+
+- On 2026-07-13, the maintainer approved release after the custom-view
+  first-open compatibility fix and the scroll-to-top reliability fix were
+  deployed to the dedicated test Vault.
+- Assisted UI checks in Obsidian 1.12.7 covered first-open navigation from
+  PalmWiki Home and Obsidian views, Live Preview, Reading view, Source mode,
+  repeated long-note round trips, stale-content cleanup, plugin disable and
+  re-enable, and manual scroll takeover during a pending top correction.
+- The release keeps the public Obsidian navigation APIs and has no PalmWiki
+  imports, settings, DOM selectors, or runtime dependency.
 
 ## Deployment and rollback
 
