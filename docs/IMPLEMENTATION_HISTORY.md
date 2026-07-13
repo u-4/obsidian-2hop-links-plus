@@ -66,7 +66,7 @@
 - Styles the scroll action as a circular, raised elevator-style control with
   hover and pressed feedback.
 
-## Unreleased Markdown host readiness
+## 0.41.1 Markdown host readiness
 
 - Defers inline injection when the active Markdown view or its Live Preview /
   Reading view host has not been attached yet, instead of recording an empty
@@ -83,6 +83,16 @@
   imports, DOM classes, settings, or runtime dependency were added.
 - Adds deterministic tests for host appearance, superseding navigation,
   cancellation, and retry exhaustion.
+
+## 0.41.1 scroll-to-top reliability
+
+- Keeps the upper-right action's smooth return animation, then checks the same
+  Markdown pane at finite delays and applies an immediate final correction only
+  when the note remains more than eight pixels from the top.
+- Scopes correction to the same file and mode, and reuses the existing
+  wheel/touch/pointer/keyboard cancellation so manual scrolling always wins.
+- Adds direct fake-scroll-host tests for an interrupted smooth return and user
+  cancellation.
 
 ## Review and testing
 

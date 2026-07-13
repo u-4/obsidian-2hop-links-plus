@@ -289,9 +289,13 @@ Expected result:
 - From the note top or middle, activating the action scrolls the same note pane
   to the beginning of its 2-hop links area.
 - In the 2-hop links area, the label changes to `Scroll to note top`; activating
-  it returns the same note pane to the top.
-- The round trip works repeatedly in both Live Preview and Reading view, and
-  changing view mode does not duplicate the action.
+  it returns the same note pane to the top. After at most 1.5 seconds, the first
+  note heading is visible and the scroll must not remain at an intermediate
+  position.
+- The round trip works repeatedly in Live Preview, Reading view, and Source
+  mode, and changing view mode does not duplicate the action.
+- If wheel, touch, pointer, or keyboard input takes over during the return, the
+  plugin cancels its pending correction and does not fight the manual scroll.
 - Searching or changing the temporary sort order does not remove or duplicate
   the action.
 - With separate-pane display enabled, the action is absent from both the main

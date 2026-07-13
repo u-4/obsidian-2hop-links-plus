@@ -122,6 +122,7 @@ export default class TwohopLinksPlugin extends Plugin {
     );
     this.registerEvent(
       this.app.workspace.on("layout-change", () => {
+        this.scrollNavigator.cancelPending();
         this.scrollNavigator.prune();
       })
     );
@@ -303,6 +304,7 @@ export default class TwohopLinksPlugin extends Plugin {
       return;
     }
 
+    this.scrollNavigator.cancelPending();
     if (this.showLinksInMarkdown) {
       this.scheduleRefresh(true, this.getRefreshDebounceMs());
     }

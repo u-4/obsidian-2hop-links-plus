@@ -18,6 +18,7 @@ import { Links } from "../src/links.ts";
 import {
   getScrollDestination,
   getScrollDestinationLabel,
+  MarkdownScrollNavigator,
 } from "../src/scrollNavigation.ts";
 import { getNextLoadedState } from "../src/ui/twohopLinksLoadState.ts";
 import {
@@ -74,6 +75,96 @@ class FakeAnimationFrames {
     handler(16);
     return true;
   }
+}
+
+function createScrollNavigatorFixture() {
+  const timer = new FakeTimer();
+  const listeners = new Map();
+  const scrollCalls = [];
+  const viewportBounds = { top: 100, bottom: 700, height: 600 };
+  const resultsBounds = { top: 110, bottom: 910, height: 800 };
+  const ownerWindow = {
+    setTimeout: (handler, delayMs) => timer.setTimeout(handler, delayMs),
+    clearTimeout: (handle) => timer.clearTimeout(handle),
+    requestAnimationFrame: () => 1,
+    cancelAnimationFrame: () => {},
+    matchMedia: () => ({ matches: false }),
+  };
+  const ownerDocument = { defaultView: ownerWindow };
+  const scrollHost = {
+    scrollTop: 1800,
+    scrollTo(options) {
+      scrollCalls.push({ ...options });
+      this.scrollTop = options.behavior === "smooth" ? 300 : options.top;
+    },
+    getBoundingClientRect: () => viewportBounds,
+  };
+  const target = {
+    isConnected: true,
+    ownerDocument,
+    getClientRects: () => [{}],
+    getBoundingClientRect: () => resultsBounds,
+    scrollIntoView: () => {},
+    closest(selector) {
+      return selector.includes(".markdown-preview-view") ? scrollHost : null;
+    },
+  };
+  const actionElement = {
+    isConnected: true,
+    classList: { add: () => {} },
+    dataset: {},
+    attributes: new Map(),
+    setAttribute(name, value) {
+      this.attributes.set(name, value);
+    },
+    remove() {
+      this.isConnected = false;
+    },
+  };
+  const containerEl = {
+    isConnected: true,
+    ownerDocument,
+    querySelectorAll: (selector) =>
+      selector === ".markdown-preview-view > .twohop-links-container"
+        ? [target]
+        : [],
+    addEventListener: (name, handler) => listeners.set(name, handler),
+    removeEventListener: (name) => listeners.delete(name),
+    getBoundingClientRect: () => viewportBounds,
+  };
+  let activate = () => {};
+  let mode = "preview";
+  const view = {
+    file: { path: "LongScrollActive.md" },
+    containerEl,
+    currentMode: {
+      getScroll: () => scrollHost.scrollTop,
+      applyScroll: (top) => {
+        scrollHost.scrollTop = top;
+      },
+    },
+    getMode: () => mode,
+    addAction: (_icon, _label, callback) => {
+      activate = callback;
+      return actionElement;
+    },
+  };
+
+  return {
+    actionElement,
+    activate: () => activate(),
+    dispatch: (name) => listeners.get(name)?.({ type: name }),
+    scrollCalls,
+    scrollHost,
+    setFilePath: (path) => {
+      view.file = { path };
+    },
+    setMode: (nextMode) => {
+      mode = nextMode;
+    },
+    timer,
+    view,
+  };
 }
 
 test("tab event bursts run only the latest scheduled refresh", async () => {
@@ -354,6 +445,72 @@ test("scroll navigation follows the current note position", () => {
   );
   assert.equal(getScrollDestinationLabel("links"), "Scroll to 2-hop links");
   assert.equal(getScrollDestinationLabel("top"), "Scroll to note top");
+});
+
+test("scroll navigation settles an interrupted smooth return to note top", () => {
+  const fixture = createScrollNavigatorFixture();
+  const navigator = new MarkdownScrollNavigator();
+  navigator.ensure(fixture.view);
+
+  assert.equal(
+    fixture.actionElement.dataset.twohopScrollDestination,
+    "top"
+  );
+  fixture.activate();
+  assert.equal(fixture.scrollHost.scrollTop, 300);
+  assert.deepEqual(fixture.scrollCalls, [{ top: 0, behavior: "smooth" }]);
+
+  fixture.timer.runAll();
+  assert.equal(fixture.scrollHost.scrollTop, 0);
+  assert.deepEqual(fixture.scrollCalls, [
+    { top: 0, behavior: "smooth" },
+    { top: 0, behavior: "auto" },
+  ]);
+  assert.equal(
+    fixture.actionElement.dataset.twohopScrollDestination,
+    "links"
+  );
+});
+
+test("manual scroll intent cancels the pending note-top correction", () => {
+  const fixture = createScrollNavigatorFixture();
+  const navigator = new MarkdownScrollNavigator();
+  navigator.ensure(fixture.view);
+
+  fixture.activate();
+  fixture.dispatch("wheel");
+  fixture.timer.runAll();
+
+  assert.equal(fixture.scrollHost.scrollTop, 300);
+  assert.deepEqual(fixture.scrollCalls, [{ top: 0, behavior: "smooth" }]);
+});
+
+test("an old note-top correction cannot revive after leaving and returning", () => {
+  const scenarios = [
+    {
+      leave: (fixture) => fixture.setFilePath("Other.md"),
+      return: (fixture) => fixture.setFilePath("LongScrollActive.md"),
+    },
+    {
+      leave: (fixture) => fixture.setMode("source"),
+      return: (fixture) => fixture.setMode("preview"),
+    },
+  ];
+
+  for (const scenario of scenarios) {
+    const fixture = createScrollNavigatorFixture();
+    const navigator = new MarkdownScrollNavigator();
+    navigator.ensure(fixture.view);
+
+    fixture.activate();
+    scenario.leave(fixture);
+    navigator.cancelPending();
+    scenario.return(fixture);
+    fixture.timer.runAll();
+
+    assert.equal(fixture.scrollHost.scrollTop, 300);
+    assert.deepEqual(fixture.scrollCalls, [{ top: 0, behavior: "smooth" }]);
+  }
 });
 
 test("temporary sorting preserves a manually loaded view", () => {
