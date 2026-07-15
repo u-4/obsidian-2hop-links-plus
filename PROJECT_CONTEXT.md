@@ -5,9 +5,9 @@
 - This is a public community fork based on `2hop-links-plus` 0.37.0.
 - The Git history is rooted in the upstream `0.37.0` tag; local improvements are
   maintained on `main`.
-- Version `0.41.1` is the current release. It retains the 0.41 interface work
-  while fixing first-open inline rendering from custom views and interrupted
-  returns to the top of long notes.
+- Version `0.42.0` is the current release. It adds a responsive mobile toolbar,
+  readable narrow-layout cards, stable search geometry, theme-aware temporary
+  sorting, and a documented CSS integration boundary around inline results.
 - The repository is intended for source development, review, and reproducible releases.
 
 ## 0.41.1 Markdown host readiness fix
@@ -40,6 +40,23 @@
   user has taken over scrolling.
 - Deterministic tests simulate an interrupted smooth return and verify both the
   final top alignment and cancellation after manual scroll intent.
+
+## 0.42.0 responsive toolbar and related-region integration
+
+- Search, settings, and temporary sorting remain on one row. The search surface
+  expands in place, while narrow panes use 44 px controls and two readable card
+  columns.
+- The temporary sort control opens an Obsidian menu, marks the current value,
+  and shows an accent dot only when it differs from the configured default.
+- Light and dark menu surfaces use explicit readable foreground and background
+  colors. Search captures the pre-filter result height once so the toolbar does
+  not jump when the visible card count changes.
+- Inline results expose stable document-footer classes and data attributes for
+  optional theme CSS. Injection and cleanup continue to cover all Markdown mode
+  hosts without making the plugin depend on the external CSS.
+- Closing an active separate 2-hop pane restores a suitable Markdown leaf only
+  when it belongs to the same workspace container and Obsidian has not already
+  selected another leaf.
 
 ## Confirmed behavior
 
@@ -96,6 +113,17 @@ active-note target.
   re-enable, and manual scroll takeover during a pending top correction.
 - The release keeps the public Obsidian navigation APIs and has no PalmWiki
   imports, settings, DOM selectors, or runtime dependency.
+
+## Version 0.42.0 acceptance record
+
+- On 2026-07-15, the maintainer reviewed the responsive interface work, reported
+  no apparent problems with the completed feature set, and requested publication.
+- The candidate was exercised in the dedicated test Vault and the maintainer's
+  PalmWiki environment during the mobile and tablet layout iterations. Optional
+  Cosense-style page-card CSS remains maintained outside this repository.
+- Automated release checks cover compact-search clearing, the complete checked
+  sort menu, temporary-sort indication, search-height reservation, stale-menu
+  protection, and safe inline restoration after closing a separate pane.
 
 ## Deployment and rollback
 

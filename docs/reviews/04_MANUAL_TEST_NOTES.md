@@ -97,6 +97,27 @@ interrupted smooth-scroll, and manual-takeover coverage. Pop-out windows and a
 macOS reduced-motion configuration were not separately reproduced for this
 patch and remain non-blocking focused follow-up checks.
 
+## Version 0.42.0 acceptance — 2026-07-15
+
+- The maintainer reviewed the completed responsive toolbar, mobile card layout,
+  search behavior, temporary-sort indication, and coordinated page-card boundary,
+  reported no apparent problems, and requested the GitHub release.
+- Layout iterations used the dedicated local test Vault and the maintainer's
+  PalmWiki environment on mobile/tablet-sized views. The optional Cosense-style
+  CSS is maintained and deployed separately from this plugin release.
+- The candidate keeps search, settings, and sorting on one row, exposes 44 px
+  narrow-layout controls, uses two card columns, preserves the results region
+  during filtering, and keeps light/dark sort menus readable.
+- The inline region contract was reviewed across Reading and editor hosts. The
+  plugin adds and removes its host marker together with the inline container;
+  external CSS remains optional and is not imported by the plugin.
+- Automated tests cover search disclosure and clearing, sort menu completeness,
+  temporary-sort indication, result-height reservation, stale sort-menu context,
+  and same-container inline restoration after closing a separate pane.
+- The remaining visual risk is theme- and platform-specific rendering outside
+  the combinations reviewed by the maintainer. Rollback remains restoration of
+  the previous `main.js`, `manifest.json`, and `styles.css` followed by reload.
+
 ## Residual platform-specific risks
 
 Mobile long-press behavior and responsiveness in a substantially larger Vault

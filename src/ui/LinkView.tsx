@@ -172,7 +172,7 @@ export default class LinkView
   render(): JSX.Element {
     return (
       <div
-        className={"twohop-links-box"}
+        className="twohop-links-box twohop-links-card"
         onTouchStart={() => {
           this.setState({ touchStart: Date.now() });
         }}

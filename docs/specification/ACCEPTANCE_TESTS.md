@@ -53,18 +53,27 @@ Open `Active.md` or another note with 2-hop results.
 
 Expected result:
 
-- The toolbar order is search box, compact gear button, then sort-order dropdown.
-- With enough width, the gear button and sort dropdown align to the right edge,
-  while the search box fills the available space before them.
-- The search box stops growing at 727 px, approximately five default card widths.
+- The toolbar order is a full-width compact search surface, gear button, then sort
+  icon, and the three controls remain on one line at every pane width. Before
+  expansion, the search surface shows only its left-aligned search icon.
+- The search surface has a slightly rounded rectangular outline rather than a
+  circle or pill, and fills all space up to the gear button. Activating its icon
+  expands the input inside the same unchanged outline and focuses it.
+  Activating the icon again, or pressing Escape in the input, closes the input and
+  clears the filter so no hidden query remains active.
+- Search expansion and query changes do not move the gear or sort controls.
 - The gear button opens the 2Hop Links Plus settings tab.
-- The dropdown contains every Default sort order option from the settings tab.
-- Changing the toolbar dropdown immediately rebuilds and reorders the cards.
-- Changing the toolbar dropdown does not change the Default sort order in settings.
-- Opening another note resets the toolbar dropdown to the configured default.
+- Activating the sort icon opens an Obsidian menu containing every Default sort
+  order option, and exactly one check mark identifies the current temporary order.
+- Changing the toolbar menu immediately rebuilds and reorders the cards.
+- Changing the toolbar menu does not change the Default sort order in settings.
+- The sort icon has no status dot while it matches the configured default. Choosing
+  a different temporary order adds a small accent-colored dot at its upper-right;
+  choosing the default again or opening another note removes the dot.
+- Opening another note resets the temporary sort menu to the configured default.
 - Restarting Obsidian uses the configured default; the temporary toolbar choice is not saved.
-- In a narrow main or separate pane, the toolbar wraps without horizontal
-  overflow and all three controls remain usable.
+- In a narrow main or separate pane, the collapsed controls stay on one line
+  without horizontal overflow, and each icon remains usable.
 - In a separate pane, changing the temporary sort order keeps that pane open;
   its toolbar, current search query, and cards remain visible while the cards
   reorder in place.
@@ -352,3 +361,49 @@ Expected result:
   No hidden content or action returns. Re-enable the plugin after the test.
 - Navigation history contains one normal open operation; the plugin does not
   trigger duplicate `file-open` or `active-leaf-change` events.
+
+## 19. Responsive toolbar, card readability, and content-card boundary
+
+Use `Active.md` with enough results to fill several rows. Test both light and dark
+themes, first with the default theme and then with the coordinated
+`cosense-scrapbox-style.css` snippet enabled.
+
+Expected result:
+
+- At iPhone-sized or otherwise narrow pane widths, the full-width compact search
+  surface, settings, and sort controls remain on one line with no horizontal page
+  scroll.
+- Each compact control has a 44 px touch target in the narrow layout. Search
+  expansion, clearing by activating the search icon again, Escape, settings, and
+  every sort menu item remain operable.
+- Narrow layouts display two cards per row. Titles and previews are readable,
+  long Japanese titles wrap inside their cards, and images do not expand the grid.
+- The light theme uses a light control surface with dark text and icons. Card
+  preview text remains distinguishable from its white card rather than appearing
+  as very pale gray.
+- The sort menu opens only after activating its icon, stays inside the visible
+  window, marks the current temporary order, and closes after a selection. Its
+  surface is light with dark text in the light theme and dark with light text in
+  the dark theme, including checked, hovered, and selected rows.
+- Start with several displayed rows, then search for many matches, one match, and
+  no matches without clearing the input. The toolbar stays at the same viewport
+  position and the results region never shrinks below the height that was rendered
+  immediately before the search began. Clearing the query restores natural height.
+- With the coordinated Cosense snippet enabled, only the Markdown page content is
+  presented as the note card. `.twohop-links-container` and Obsidian's in-document
+  `.embedded-backlinks` remain on the surrounding canvas surface.
+- The content-card boundary remains correct in Live Preview, Source mode, and
+  Reading view, with inline 2-hop enabled or disabled and with standard backlinks
+  expanded or collapsed. No one-pixel white outline remains around the left,
+  right, or bottom edge of the 2-hop canvas region.
+- The plugin remains usable without the optional Cosense snippet; it does not
+  directly depend on any `--cosense-*` custom property.
+- Inline results expose the stable integration contract
+  `.twohop-links-container--inline.is-document-related-region`,
+  `data-twohop-placement="document-footer"`, and a `data-twohop-host` value of
+  `reading`, `editor`, or `legacy`. Editor hosts also expose
+  `data-twohop-engine="cm6"`. The host class
+  `.has-twohop-document-related-region` is removed when inline results are
+  disabled or the plugin unloads.
+- Keyboard focus is visible. Screen-reader names identify Search, Settings, and
+  the current temporary sort order even though the controls use icons.

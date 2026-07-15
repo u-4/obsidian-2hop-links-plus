@@ -94,6 +94,22 @@
 - Adds direct fake-scroll-host tests for an interrupted smooth return and user
   cancellation.
 
+## 0.42.0 responsive card interface
+
+- Replaces the wide select control with a checked Obsidian sort menu opened from
+  a compact icon, and adds an accent dot when the temporary order differs from
+  the settings default.
+- Keeps search, settings, and sorting on one line. The search input expands
+  inside the same slightly rounded rectangular surface and clears when closed.
+- Uses container queries for 44 px narrow-layout controls and a readable two-card
+  grid, with stronger light-theme preview contrast and light/dark menu colors.
+- Reserves the result region's pre-filter height during search so changing the
+  match count does not pull the toolbar up or down.
+- Adds stable inline related-region classes and placement attributes for optional
+  CSS that separates the Markdown note card from 2-hop and standard backlinks.
+- Restores inline display safely when an active separate 2-hop pane is closed,
+  without overriding a different leaf already chosen by Obsidian.
+
 ## Review and testing
 
 - The implementation went through multiple external review and hardening rounds.

@@ -45,7 +45,7 @@ export default class NewLinksView extends React.Component<NewLinksViewProps> {
     if (this.props.fileEntities.length > 0) {
       return (
         <div className="twohop-links-section">
-          <div className={"twohop-links-box twohop-links-new-links-header"}>
+          <div className="twohop-links-box twohop-links-section-header twohop-links-new-links-header">
             New links
           </div>
           {this.props.fileEntities
@@ -66,7 +66,7 @@ export default class NewLinksView extends React.Component<NewLinksViewProps> {
             <div
               ref={this.loadMoreRef}
               onClick={this.props.onLoadMore}
-              className="load-more-button twohop-links-box"
+              className="load-more-button twohop-links-box twohop-links-load-more"
             ></div>
           )}
         </div>

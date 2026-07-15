@@ -2,14 +2,19 @@
   --box-width: 139px;
   --box-height: 170px;
   --box-font-size: 100%;
-  --twohop-search-max-width: 727px;
+  --twohop-toolbar-control-size: 36px;
+  --twohop-search-radius: 6px;
+  --twohop-toolbar-background: var(--background-primary);
+  --twohop-toolbar-text: var(--text-normal);
+  --twohop-toolbar-border: var(--background-modifier-border);
+  --twohop-surface-muted: var(--text-muted);
 }
 /* switch light/dark mode */
 .theme-light {
   --bg-box: #ffffff;
   --bg-box-top: #e2e2e2;
   --title-box: #363c49;
-  --text-box: #b7b7b7;
+  --text-box: #5f6773;
   --bg-header-twohop: #9babc1;
   --title-header-twohop: #ffffff;
   --bg-header-new: #fd7373;
@@ -35,9 +40,20 @@
   --title-header-properties: #ffffff;
 }
 
-/* the container */
+/* Inline and separate-pane responsive containers */
+.twohop-links-container,
+.TwoHopLinks {
+  container-name: twohop-links;
+  container-type: inline-size;
+}
+
+/* the inline container */
 .twohop-links-container {
   margin-bottom: 55px;
+  background: transparent;
+  border: 0;
+  outline: 0;
+  box-shadow: none;
   scroll-margin-top: 12px;
   user-select: none;
   -webkit-user-select: none;
@@ -63,8 +79,14 @@
   word-break: break-word;
 }
 
-.twohop-links-box:hover {
-  filter: brightness(0.8) contrast(0.8);
+@media (hover: hover) and (pointer: fine) {
+  .twohop-links-box:hover {
+    filter: brightness(0.8) contrast(0.8);
+  }
+}
+
+.twohop-links-box:active {
+  filter: brightness(0.9) contrast(0.9);
 }
 
 .twohop-links-box-title {
@@ -83,14 +105,14 @@
   margin: auto;
 }
 
-/* Non-header box */
-.twohop-links-box:not([class*=" "]) {
+/* Note cards */
+.twohop-links-card {
   border-top: 10px solid var(--bg-box-top);
 }
 
 .twohop-links-box-preview {
   color: var(--text-box);
-  font-size: 70%;
+  font-size: 85%;
   white-space: pre-line;
 }
 
@@ -144,54 +166,244 @@ body:not(.zoom-off)
 .twohop-links-toolbar {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 8px;
   min-width: 0;
   margin: 12px 20px 0;
 }
 
-.twohop-links-search-input {
-  box-sizing: border-box;
-  width: 100%;
-  min-width: min(180px, 100%);
-  max-width: var(--twohop-search-max-width);
-  flex: 1 1 320px;
-}
-
-.twohop-links-toolbar-actions {
+.twohop-links-search-control {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
-  gap: 8px;
+  gap: 0;
   min-width: 0;
-  max-width: 100%;
-  flex: 0 1 260px;
-  margin-inline-start: auto;
+  height: var(--twohop-toolbar-control-size);
+  flex: 1 1 auto;
+  color: var(--twohop-toolbar-text);
+  background: var(--twohop-toolbar-background);
+  border: 1px solid var(--twohop-toolbar-border);
+  border-radius: var(--twohop-search-radius);
+  overflow: hidden;
+}
+
+.twohop-links-search-control:focus-within {
+  border-color: var(--interactive-accent);
+  outline: 2px solid var(--interactive-accent);
+  outline-offset: 1px;
+}
+
+.twohop-links-search-input {
+  appearance: none;
+  -webkit-appearance: none;
+  box-sizing: border-box;
+  min-width: 0;
+  width: 100%;
+  height: var(--twohop-toolbar-control-size);
+  flex: 1 1 auto;
+  padding: 0 10px 0 2px;
+  color: var(--twohop-toolbar-text);
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.twohop-links-toolbar-button {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: var(--twohop-toolbar-control-size);
+  height: var(--twohop-toolbar-control-size);
+  min-width: var(--twohop-toolbar-control-size);
+  padding: 6px;
+  color: var(--twohop-toolbar-text);
+  background: var(--twohop-toolbar-background);
+  border: 1px solid var(--twohop-toolbar-border);
+  border-radius: var(--button-radius);
+}
+
+.twohop-links-toolbar-button:focus-visible,
+.twohop-links-toolbar-button.is-active {
+  color: var(--text-on-accent);
+  background: var(--interactive-accent);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .twohop-links-toolbar-button:hover {
+    color: var(--text-on-accent);
+    background: var(--interactive-accent);
+  }
+}
+
+.twohop-links-toolbar-button:active {
+  filter: brightness(0.9);
+}
+
+.twohop-links-toolbar-button:focus-visible,
+.twohop-links-search-input:focus-visible {
+  outline: 2px solid var(--interactive-accent);
+  outline-offset: 2px;
 }
 
 .twohop-links-settings-button {
-  flex: 0 0 auto;
-  width: var(--input-height);
-  height: var(--input-height);
-  padding: 4px;
+  margin-inline-start: 0;
 }
 
-.twohop-links-sort-select {
-  box-sizing: border-box;
+.twohop-links-search-control .twohop-links-search-button {
+  flex: 0 0 var(--twohop-toolbar-control-size);
+  width: var(--twohop-toolbar-control-size);
+  height: calc(var(--twohop-toolbar-control-size) - 2px);
+  min-width: var(--twohop-toolbar-control-size);
+  color: var(--twohop-toolbar-text);
+  background: transparent;
+  border: 0;
+  border-radius: calc(var(--twohop-search-radius) - 1px) 0 0
+    calc(var(--twohop-search-radius) - 1px);
+  box-shadow: none;
+}
+
+.twohop-links-search-control:not(.is-expanded) .twohop-links-search-button {
+  flex: 1 1 auto;
   width: 100%;
-  min-width: 0;
-  max-width: 220px;
-  flex: 1 1 180px;
+  justify-content: flex-start;
+  padding-inline-start: 10px;
+}
+
+.twohop-links-search-control .twohop-links-search-button:focus-visible,
+.twohop-links-search-control .twohop-links-search-button.is-active {
+  color: var(--twohop-toolbar-text);
+  background: transparent;
+  outline: 0;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .twohop-links-search-control .twohop-links-search-button:hover {
+    color: var(--twohop-toolbar-text);
+    background: var(--background-modifier-hover);
+  }
+}
+
+.twohop-links-search-input:focus-visible {
+  outline: 0;
+}
+
+.twohop-links-sort-button {
+  position: relative;
+  overflow: visible;
+}
+
+.twohop-links-sort-button.has-temporary-sort::after {
+  content: "";
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 7px;
+  height: 7px;
+  background: var(--interactive-accent);
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px var(--twohop-toolbar-background);
+  pointer-events: none;
+}
+
+.twohop-links-results-body {
+  overflow-anchor: none;
+}
+
+.twohop-links-results-body {
+  display: flow-root;
 }
 
 .twohop-links-search-status {
-  color: var(--text-muted);
+  color: var(--twohop-surface-muted);
   font-size: 80%;
   max-width: calc(100% - 40px);
   margin: 4px 20px 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+@container twohop-links (max-width: 520px) {
+  .twohop-links-results {
+    --twohop-toolbar-control-size: 44px;
+  }
+
+  .twohop-links-toolbar {
+    gap: 6px;
+    margin: 10px 10px 0;
+  }
+
+  .twohop-links-search-control {
+    gap: 0;
+  }
+
+  .twohop-links-section {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    margin: 16px 10px;
+  }
+
+  .twohop-links-box {
+    min-height: 180px;
+    max-height: max(var(--box-height), 220px);
+  }
+
+  .twohop-links-box-title {
+    font-size: 100%;
+  }
+
+  .twohop-links-box-preview {
+    font-size: 90%;
+    line-height: 1.45;
+  }
+
+  .twohop-links-search-status {
+    max-width: calc(100% - 20px);
+    margin-inline: 10px;
+  }
+}
+
+body.theme-light .twohop-links-sort-menu-scope {
+  --twohop-sort-menu-background: #ffffff;
+  --twohop-sort-menu-hover: #edf1f5;
+  --twohop-sort-menu-text: #20242b;
+  --twohop-sort-menu-muted: #5f6773;
+  --twohop-sort-menu-border: rgba(20, 40, 70, 0.18);
+}
+
+body.theme-dark .twohop-links-sort-menu-scope {
+  --twohop-sort-menu-background: #2b2e38;
+  --twohop-sort-menu-hover: #3b404b;
+  --twohop-sort-menu-text: #f0f0f0;
+  --twohop-sort-menu-muted: #b4b5b6;
+  --twohop-sort-menu-border: rgba(235, 241, 248, 0.18);
+}
+
+.twohop-links-sort-menu-scope .menu {
+  --menu-background: var(--twohop-sort-menu-background);
+  --background-primary: var(--twohop-sort-menu-background);
+  --background-secondary: var(--twohop-sort-menu-background);
+  --background-modifier-hover: var(--twohop-sort-menu-hover);
+  --text-normal: var(--twohop-sort-menu-text);
+  --text-muted: var(--twohop-sort-menu-muted);
+  color: var(--twohop-sort-menu-text) !important;
+  background-color: var(--twohop-sort-menu-background) !important;
+  border-color: var(--twohop-sort-menu-border) !important;
+}
+
+.twohop-links-sort-menu-scope .menu-item,
+.twohop-links-sort-menu-scope .menu-item-title,
+.twohop-links-sort-menu-scope .menu-item-icon {
+  color: inherit;
+}
+
+.twohop-links-sort-menu-scope .menu-item:hover,
+.twohop-links-sort-menu-scope .menu-item.selected,
+.twohop-links-sort-menu-scope .menu-item.is-selected {
+  color: var(--twohop-sort-menu-text) !important;
+  background-color: var(--twohop-sort-menu-hover) !important;
 }
 
 .twohop-links-scroll-toggle {
@@ -212,35 +424,38 @@ body:not(.zoom-off)
   );
   border: 1px solid var(--interactive-accent);
   border-radius: 50%;
-  box-shadow:
-    0 2px 4px rgba(0, 0, 0, 0.28),
-    inset 0 1px 0 rgba(255, 255, 255, 0.2),
-    inset 0 -1px 1px rgba(0, 0, 0, 0.18);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2), inset 0 -1px 1px rgba(0, 0, 0, 0.18);
   opacity: 1;
-  transition:
-    transform 120ms ease,
-    box-shadow 120ms ease,
-    filter 120ms ease;
+  transition: transform 120ms ease, box-shadow 120ms ease, filter 120ms ease;
 }
 
-.twohop-links-scroll-toggle:hover,
 .twohop-links-scroll-toggle:focus-visible {
   color: var(--interactive-accent-hover);
   border-color: var(--interactive-accent-hover);
   filter: brightness(1.08);
   transform: translateY(-1px);
-  box-shadow:
-    0 3px 6px rgba(0, 0, 0, 0.32),
+  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.32),
     inset 0 1px 0 rgba(255, 255, 255, 0.26),
     inset 0 -1px 1px rgba(0, 0, 0, 0.16);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .twohop-links-scroll-toggle:hover {
+    color: var(--interactive-accent-hover);
+    border-color: var(--interactive-accent-hover);
+    filter: brightness(1.08);
+    transform: translateY(-1px);
+    box-shadow: 0 3px 6px rgba(0, 0, 0, 0.32),
+      inset 0 1px 0 rgba(255, 255, 255, 0.26),
+      inset 0 -1px 1px rgba(0, 0, 0, 0.16);
+  }
 }
 
 .twohop-links-scroll-toggle:active {
   filter: brightness(0.96);
   transform: translateY(1px);
-  box-shadow:
-    0 1px 1px rgba(0, 0, 0, 0.22),
-    inset 0 2px 3px rgba(0, 0, 0, 0.28);
+  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.22), inset 0 2px 3px rgba(0, 0, 0, 0.28);
 }
 
 .twohop-links-scroll-toggle:focus-visible {
@@ -289,7 +504,7 @@ settings:
         title: Text color
         type: variable-themed-color
         format: hex
-        default-light: '#b7b7b7'
+        default-light: '#5f6773'
         default-dark: '#b4b5b6'
     -
         id: bg-box-top

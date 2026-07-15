@@ -45,8 +45,12 @@ import {
   getCurrentMarkdownHostElements,
   shouldContinueMarkdownHostRetry,
 } from "./markdownHostReadiness";
+import { chooseInlineRestoreLeaf } from "./inlineRestoreLeaf";
 
 const CONTAINER_CLASS = "twohop-links-container";
+const INLINE_CONTAINER_CLASS = "twohop-links-container--inline";
+const RELATED_REGION_CLASS = "is-document-related-region";
+const HOST_RELATED_REGION_CLASS = "has-twohop-document-related-region";
 // Covers roughly one to two seconds on common 60-120 Hz displays.
 const MARKDOWN_HOST_RETRY_FRAMES = 120;
 export const HOVER_LINK_ID = "2hop-links";
@@ -77,10 +81,7 @@ export default class TwohopLinksPlugin extends Plugin {
     this.links = new Links(this.app, this.settings);
     this.scrollNavigator = new MarkdownScrollNavigator(async (view) => {
       const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
-      if (
-        activeView === view &&
-        !this.settings.showTwoHopLinksInSeparatePane
-      ) {
+      if (activeView === view && !this.settings.showTwoHopLinksInSeparatePane) {
         await this.renderTwohopLinks(true);
       }
     });
@@ -258,7 +259,9 @@ export default class TwohopLinksPlugin extends Plugin {
       `result calculations ${stats.resultComputations}, result hits ${stats.resultCacheHits}, ` +
       `joined ${stats.joinedComputations}, cancelled ${
         stats.gatherCancellations + stats.cancellations
-      }, last graph ${stats.lastBuildMs} ms, last result ${stats.lastGatherMs} ms`;
+      }, last graph ${stats.lastBuildMs} ms, last result ${
+        stats.lastGatherMs
+      } ms`;
     console.info("2Hop Links performance statistics", stats);
     new Notice(message, 10000);
   }
@@ -339,10 +342,7 @@ export default class TwohopLinksPlugin extends Plugin {
         ? removeBlockReference(targetPathToReveal)
         : this.resolveFilePath(linkTextToReveal, file.path);
     const normalizedLinkTextToReveal = removeBlockReference(linkTextToReveal);
-    const references = [
-      ...(cache.links ?? []),
-      ...(cache.embeds ?? []),
-    ]
+    const references = [...(cache.links ?? []), ...(cache.embeds ?? [])]
       .slice()
       .sort(
         (a, b) =>
@@ -429,7 +429,21 @@ export default class TwohopLinksPlugin extends Plugin {
   async updateTwoHopLinksView(): Promise<void> {
     this.refreshTask.cancel();
     this.links.cancelActiveGather();
-    if (this.isTwoHopLinksViewOpen()) {
+    const separatePaneLeaves =
+      this.app.workspace.getLeavesOfType("TwoHopLinksView");
+    const activeLeafBeforeClose = this.app.workspace.activeLeaf;
+    const activeSeparatePaneLeaf =
+      separatePaneLeaves.find(
+        (leaf) =>
+          leaf === activeLeafBeforeClose &&
+          leaf.view instanceof SeparatePaneView
+      ) ?? null;
+    const restoreContainer = activeSeparatePaneLeaf?.getContainer() ?? null;
+    const recentLeafInSameContainer = restoreContainer
+      ? this.app.workspace.getMostRecentLeaf(restoreContainer)
+      : null;
+
+    if (separatePaneLeaves.length > 0) {
       this.app.workspace.detachLeavesOfType("TwoHopLinksView");
     }
     if (this.settings.showTwoHopLinksInSeparatePane) {
@@ -437,7 +451,16 @@ export default class TwohopLinksPlugin extends Plugin {
       this.disableLinksInMarkdown();
       this.removePaddingBottom();
     } else {
-      this.enableLinksInMarkdown();
+      const restoreLeaf = chooseInlineRestoreLeaf({
+        didCloseActiveSeparatePane: activeSeparatePaneLeaf !== null,
+        activeLeafAfterClose: this.app.workspace.activeLeaf,
+        closedSeparatePaneLeaf: activeSeparatePaneLeaf,
+        recentLeaf: recentLeafInSameContainer,
+        expectedContainer: restoreContainer,
+        isMarkdownLeaf: (leaf) => leaf.view instanceof MarkdownView,
+        getContainer: (leaf) => leaf.getContainer(),
+      });
+      this.enableLinksInMarkdown(restoreLeaf);
     }
   }
 
@@ -555,8 +578,8 @@ export default class TwohopLinksPlugin extends Plugin {
           this.app.workspace.getActiveViewOfType(MarkdownView);
         return Boolean(
           currentView &&
-          currentView.file?.path === activeFile.path &&
-          this.isMarkdownHostReady(currentView)
+            currentView.file?.path === activeFile.path &&
+            this.isMarkdownHostReady(currentView)
         );
       },
       onReady: () => this.scheduleRefresh(true, 0),
@@ -565,26 +588,41 @@ export default class TwohopLinksPlugin extends Plugin {
 
   private findDirectContainer(host: HTMLElement): HTMLElement | null {
     return (
-      Array.from(host.children).find((child) =>
+      (Array.from(host.children).find((child) =>
         child.classList.contains(CONTAINER_CLASS)
-      ) as HTMLElement | undefined
-    ) ?? null;
-  }
-
-  private getContainerElements(markdownView: MarkdownView): HTMLElement[] {
-    return this.getContainerHostElements(markdownView).map(
-      (host) =>
-        this.findDirectContainer(host) ??
-        host.createDiv({ cls: CONTAINER_CLASS })
+      ) as HTMLElement | undefined) ?? null
     );
   }
 
-  private getExistingContainerElements(
-    markdownView: MarkdownView
-  ): HTMLElement[] {
-    return this.getContainerHostElements(markdownView)
-      .map((host) => this.findDirectContainer(host))
-      .filter((container): container is HTMLElement => container !== null);
+  private getMarkdownHostKind(
+    host: HTMLElement
+  ): "reading" | "editor" | "legacy" {
+    if (host.matches(".markdown-preview-view")) return "reading";
+    if (host.matches(".cm-sizer")) return "editor";
+    return "legacy";
+  }
+
+  private prepareInlineContainer(host: HTMLElement): HTMLElement {
+    const container =
+      this.findDirectContainer(host) ??
+      host.createDiv({ cls: CONTAINER_CLASS });
+    container.classList.add(INLINE_CONTAINER_CLASS, RELATED_REGION_CLASS);
+    container.dataset.twohopPlacement = "document-footer";
+    const hostKind = this.getMarkdownHostKind(host);
+    container.dataset.twohopHost = hostKind;
+    if (hostKind === "editor") {
+      container.dataset.twohopEngine = "cm6";
+    } else {
+      delete container.dataset.twohopEngine;
+    }
+    host.classList.add(HOST_RELATED_REGION_CLASS);
+    return container;
+  }
+
+  private getContainerElements(markdownView: MarkdownView): HTMLElement[] {
+    return this.getContainerHostElements(markdownView).map((host) =>
+      this.prepareInlineContainer(host)
+    );
   }
 
   private getActiveFileLinks(file: TFile | null): string[] {
@@ -749,6 +787,7 @@ export default class TwohopLinksPlugin extends Plugin {
         includeBodyInCardSearch={this.settings.includeBodyInCardSearch}
         sourcePath={sourceFile.path}
         sortOrder={this.prepareLinksForFile(sourceFile)}
+        defaultSortOrder={this.settings.sortOrder}
         onSortOrderChange={this.setTemporarySortOrder.bind(this)}
         initialBoxCount={this.settings.initialBoxCount}
         initialSectionCount={this.settings.initialSectionCount}
@@ -757,8 +796,11 @@ export default class TwohopLinksPlugin extends Plugin {
     );
   }
 
-  enableLinksInMarkdown(): void {
+  enableLinksInMarkdown(restoreLeaf: WorkspaceLeaf | null = null): void {
     this.showLinksInMarkdown = true;
+    if (restoreLeaf) {
+      this.app.workspace.setActiveLeaf(restoreLeaf, { focus: false });
+    }
     this.scheduleRefresh(true, 0);
   }
 
@@ -777,9 +819,13 @@ export default class TwohopLinksPlugin extends Plugin {
     this.app.workspace.iterateAllLeaves((leaf) => {
       if (!(leaf.view instanceof MarkdownView)) return;
 
-      for (const container of this.getExistingContainerElements(leaf.view)) {
-        ReactDOM.unmountComponentAtNode(container);
-        container.remove();
+      for (const host of this.getContainerHostElements(leaf.view)) {
+        const container = this.findDirectContainer(host);
+        if (container) {
+          ReactDOM.unmountComponentAtNode(container);
+          container.remove();
+        }
+        host.classList.remove(HOST_RELATED_REGION_CLASS);
       }
     });
   }

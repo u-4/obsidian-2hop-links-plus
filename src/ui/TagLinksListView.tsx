@@ -76,7 +76,7 @@ const LinkComponent = React.memo(
               this.props.tagLink.key
                 ? `twohop-links-${this.props.tagLink.key}-header`
                 : ""
-            } twohop-links-properties-header twohop-links-box`}
+            } twohop-links-properties-header twohop-links-section-header twohop-links-box`}
           >
             {this.props.tagLink.key
               ? `${this.props.tagLink.key}: ${this.props.tagLink.property}`
@@ -99,7 +99,7 @@ const LinkComponent = React.memo(
             <div
               ref={this.loadMoreRef}
               onClick={this.loadMoreEntities}
-              className="load-more-button twohop-links-box"
+              className="load-more-button twohop-links-box twohop-links-load-more"
             ></div>
           )}
         </div>

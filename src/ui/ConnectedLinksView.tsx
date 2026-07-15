@@ -44,9 +44,7 @@ export default class ConnectedLinksView extends React.Component<ConnectedLinksVi
     if (this.props.fileEntities.length > 0) {
       return (
         <div className={"twohop-links-section " + this.props.className}>
-          <div
-            className={"twohop-links-box twohop-links-connected-links-header"}
-          >
+          <div className="twohop-links-box twohop-links-section-header twohop-links-connected-links-header">
             {this.props.title}
           </div>
           {this.props.fileEntities
@@ -67,7 +65,7 @@ export default class ConnectedLinksView extends React.Component<ConnectedLinksVi
             <div
               ref={this.loadMoreRef}
               onClick={this.props.onLoadMore}
-              className="load-more-button twohop-links-box"
+              className="load-more-button twohop-links-box twohop-links-load-more"
             ></div>
           )}
         </div>

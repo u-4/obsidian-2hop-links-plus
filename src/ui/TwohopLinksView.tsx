@@ -105,7 +105,7 @@ class LinkComponent extends React.Component<
         key={this.props.link.link.linkText}
       >
         <div
-          className={"twohop-links-twohop-header twohop-links-box"}
+          className="twohop-links-twohop-header twohop-links-section-header twohop-links-box"
           onClick={async () => this.props.onClick(this.props.link.link)}
           onMouseDown={async (event) =>
             event.button == 0 && this.props.onClick(this.props.link.link)
@@ -130,7 +130,7 @@ class LinkComponent extends React.Component<
           <div
             ref={this.loadMoreRef}
             onClick={this.loadMoreEntities}
-            className="load-more-button twohop-links-box"
+            className="load-more-button twohop-links-box twohop-links-load-more"
           ></div>
         )}
       </div>

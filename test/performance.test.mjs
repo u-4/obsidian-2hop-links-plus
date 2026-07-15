@@ -1,9 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import {
-  DebouncedTask,
-  StartupRefreshGate,
-} from "../src/performance.ts";
+import { DebouncedTask, StartupRefreshGate } from "../src/performance.ts";
 import {
   ALL_MARKDOWN_HOST_SELECTOR,
   BoundedAnimationFrameRetry,
@@ -13,6 +10,7 @@ import {
   shouldContinueMarkdownHostRetry,
 } from "../src/markdownHostReadiness.ts";
 import { GraphIndexCache } from "../src/graphIndexCache.ts";
+import { chooseInlineRestoreLeaf } from "../src/inlineRestoreLeaf.ts";
 import { prepareGraphOrderForPath } from "../src/ranking.ts";
 import { Links } from "../src/links.ts";
 import {
@@ -21,6 +19,13 @@ import {
   MarkdownScrollNavigator,
 } from "../src/scrollNavigation.ts";
 import { getNextLoadedState } from "../src/ui/twohopLinksLoadState.ts";
+import {
+  getNextSearchDisclosureState,
+  getSortMenuEntries,
+  hasTemporarySortOverride,
+  isSortMenuContextCurrent,
+  reserveResultsHeight,
+} from "../src/ui/toolbarModel.ts";
 import {
   createSettings,
   createSyntheticApp,
@@ -369,8 +374,7 @@ test("Markdown readiness follows the current mode while injection and cleanup co
   const previewHost = { name: "preview", closest: () => null };
   const embeddedHost = {
     name: "embedded",
-    closest: (selector) =>
-      selector === ".markdown-embed-content" ? {} : null,
+    closest: (selector) => (selector === ".markdown-embed-content" ? {} : null),
   };
   const resultsBySelector = new Map([
     [ALL_MARKDOWN_HOST_SELECTOR, [sourceHost, embeddedHost]],
@@ -404,11 +408,7 @@ test("scroll navigation follows the current note position", () => {
   const viewport = { top: 100, bottom: 700, height: 600 };
 
   assert.equal(
-    getScrollDestination(
-      0,
-      { top: 100, bottom: 900, height: 800 },
-      viewport
-    ),
+    getScrollDestination(0, { top: 100, bottom: 900, height: 800 }, viewport),
     "links"
   );
   assert.equal(
@@ -452,10 +452,7 @@ test("scroll navigation settles an interrupted smooth return to note top", () =>
   const navigator = new MarkdownScrollNavigator();
   navigator.ensure(fixture.view);
 
-  assert.equal(
-    fixture.actionElement.dataset.twohopScrollDestination,
-    "top"
-  );
+  assert.equal(fixture.actionElement.dataset.twohopScrollDestination, "top");
   fixture.activate();
   assert.equal(fixture.scrollHost.scrollTop, 300);
   assert.deepEqual(fixture.scrollCalls, [{ top: 0, behavior: "smooth" }]);
@@ -466,10 +463,7 @@ test("scroll navigation settles an interrupted smooth return to note top", () =>
     { top: 0, behavior: "smooth" },
     { top: 0, behavior: "auto" },
   ]);
-  assert.equal(
-    fixture.actionElement.dataset.twohopScrollDestination,
-    "links"
-  );
+  assert.equal(fixture.actionElement.dataset.twohopScrollDestination, "links");
 });
 
 test("manual scroll intent cancels the pending note-top correction", () => {
@@ -536,6 +530,157 @@ test("temporary sorting preserves a manually loaded view", () => {
   );
 });
 
+test("collapsing compact search clears its hidden query state", () => {
+  const opened = getNextSearchDisclosureState(
+    { isExpanded: false, searchInput: "" },
+    "toggle"
+  );
+  assert.deepEqual(opened, { isExpanded: true, searchInput: "" });
+
+  const closed = getNextSearchDisclosureState(
+    { isExpanded: true, searchInput: "RareA" },
+    "toggle"
+  );
+  assert.deepEqual(closed, { isExpanded: false, searchInput: "" });
+
+  const escaped = getNextSearchDisclosureState(
+    { isExpanded: true, searchInput: "RareB" },
+    "close"
+  );
+  assert.deepEqual(escaped, { isExpanded: false, searchInput: "" });
+});
+
+test("sort menu exposes every order and marks only the temporary current value", () => {
+  const entries = getSortMenuEntries("relatedCosenseLike");
+
+  assert.equal(entries.length, 11);
+  assert.equal(new Set(entries.map((entry) => entry.value)).size, 11);
+  assert.deepEqual(
+    entries.filter((entry) => entry.isCurrent).map((entry) => entry.value),
+    ["relatedCosenseLike"]
+  );
+  assert.equal(
+    entries.find((entry) => entry.value === "relatedCosenseLike")?.label,
+    "Related, Cosense-like"
+  );
+});
+
+test("temporary sort indicator appears only when the current order differs from the default", () => {
+  assert.equal(
+    hasTemporarySortOverride("relatedCosenseLike", "relatedCosenseLike"),
+    false
+  );
+  assert.equal(
+    hasTemporarySortOverride("filenameAsc", "relatedCosenseLike"),
+    true
+  );
+  assert.equal(hasTemporarySortOverride("random", "filenameAsc"), true);
+});
+
+test("search result height is captured once from a valid rendered card region", () => {
+  assert.equal(reserveResultsHeight(null, 180.2), 181);
+  assert.equal(reserveResultsHeight(181, 420), 181);
+  assert.equal(reserveResultsHeight(null, 0), null);
+  assert.equal(reserveResultsHeight(null, Number.NaN), null);
+});
+
+test("an old sort menu cannot reorder a newly active note", () => {
+  assert.equal(
+    isSortMenuContextCurrent("Active.md", "Active.md", "Active.md"),
+    true
+  );
+  assert.equal(
+    isSortMenuContextCurrent("Active.md", "Other.md", "Other.md"),
+    false
+  );
+  assert.equal(
+    isSortMenuContextCurrent("Active.md", "Active.md", "Other.md"),
+    false
+  );
+  assert.equal(isSortMenuContextCurrent("Active.md", "Active.md", null), false);
+});
+
+test("inline restore is limited to closing the active 2Hop pane in the same container", () => {
+  const mainRoot = { id: "main-root" };
+  const popoutRoot = { id: "popout-root" };
+  const markdownLeaf = { type: "markdown", id: "note", root: mainRoot };
+  const popoutMarkdownLeaf = {
+    type: "markdown",
+    id: "popout-note",
+    root: popoutRoot,
+  };
+  const sidePaneLeaf = { type: "twohop", id: "side", root: mainRoot };
+  const customLeaf = { type: "palmwiki-home", id: "home", root: mainRoot };
+  const emptyLeaf = { type: "empty", id: "empty", root: mainRoot };
+  const isMarkdownLeaf = (leaf) => leaf.type === "markdown";
+  const getContainer = (leaf) => leaf.root;
+
+  assert.equal(
+    chooseInlineRestoreLeaf({
+      didCloseActiveSeparatePane: true,
+      activeLeafAfterClose: null,
+      closedSeparatePaneLeaf: sidePaneLeaf,
+      recentLeaf: markdownLeaf,
+      expectedContainer: mainRoot,
+      isMarkdownLeaf,
+      getContainer,
+    }),
+    markdownLeaf
+  );
+  assert.equal(
+    chooseInlineRestoreLeaf({
+      didCloseActiveSeparatePane: false,
+      activeLeafAfterClose: customLeaf,
+      closedSeparatePaneLeaf: null,
+      recentLeaf: markdownLeaf,
+      expectedContainer: mainRoot,
+      isMarkdownLeaf,
+      getContainer,
+    }),
+    null,
+    "ordinary settings updates must preserve custom active views"
+  );
+  assert.equal(
+    chooseInlineRestoreLeaf({
+      didCloseActiveSeparatePane: true,
+      activeLeafAfterClose: customLeaf,
+      closedSeparatePaneLeaf: sidePaneLeaf,
+      recentLeaf: markdownLeaf,
+      expectedContainer: mainRoot,
+      isMarkdownLeaf,
+      getContainer,
+    }),
+    null,
+    "a view selected by Obsidian while closing must not be replaced"
+  );
+  assert.equal(
+    chooseInlineRestoreLeaf({
+      didCloseActiveSeparatePane: true,
+      activeLeafAfterClose: null,
+      closedSeparatePaneLeaf: sidePaneLeaf,
+      recentLeaf: popoutMarkdownLeaf,
+      expectedContainer: mainRoot,
+      isMarkdownLeaf,
+      getContainer,
+    }),
+    null,
+    "a Markdown leaf from another popout must not be selected"
+  );
+  assert.equal(
+    chooseInlineRestoreLeaf({
+      didCloseActiveSeparatePane: true,
+      activeLeafAfterClose: null,
+      closedSeparatePaneLeaf: sidePaneLeaf,
+      recentLeaf: emptyLeaf,
+      expectedContainer: mainRoot,
+      isMarkdownLeaf,
+      getContainer,
+    }),
+    null,
+    "non-Markdown leaves are not restore targets"
+  );
+});
+
 test("GraphIndex is reused and active document order is built on demand", async () => {
   const { app, files, counters } = createSyntheticApp({
     fileCount: 1200,
@@ -550,8 +695,16 @@ test("GraphIndex is reused and active document order is built on demand", async 
   for (const targetPath of firstOutgoing) {
     assert.ok(graph.in.get(targetPath)?.has(files[0].path));
   }
-  assert.equal(graph.pageRank.size, 0, "Cosense-like must skip unused PageRank");
-  assert.equal(counters.getFileCache, 0, "cold graph must not inspect every note order");
+  assert.equal(
+    graph.pageRank.size,
+    0,
+    "Cosense-like must skip unused PageRank"
+  );
+  assert.equal(
+    counters.getFileCache,
+    0,
+    "cold graph must not inspect every note order"
+  );
 
   prepareGraphOrderForPath(app, graph, files[0].path);
   prepareGraphOrderForPath(app, graph, files[1].path);
@@ -590,7 +743,11 @@ test("gather results and graph topology are reused across tab switches", async (
   assert.equal(stats.resultComputations, 2);
   assert.equal(stats.resultCacheHits, 1);
   assert.ok(stats.hits >= 1);
-  assert.equal(counters.vaultRead, 0, "Markdown ranking must not read note bodies");
+  assert.equal(
+    counters.vaultRead,
+    0,
+    "Markdown ranking must not read note bodies"
+  );
   assert.equal(counters.cachedRead, 0);
   assert.equal(counters.adapterStat, 0, "existing TFile.stat must be reused");
   assert.ok(
