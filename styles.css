@@ -192,7 +192,11 @@ body:not(.zoom-off)
   outline-offset: 1px;
 }
 
-.twohop-links-search-input {
+/*
+ * Obsidian gives focused search inputs a native form surface on mobile. Keep
+ * this input transparent so the toolbar-owned light/dark surface stays whole.
+ */
+.twohop-links-search-control > input[type="search"].twohop-links-search-input {
   appearance: none;
   -webkit-appearance: none;
   box-sizing: border-box;

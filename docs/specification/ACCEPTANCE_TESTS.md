@@ -381,6 +381,10 @@ Expected result:
 - The light theme uses a light control surface with dark text and icons. Card
   preview text remains distinguishable from its white card rather than appearing
   as very pale gray.
+- Expanding or focusing the search input does not add a second inset form-field
+  surface. The whole search control remains light in the light theme and uses one
+  continuous theme-appropriate dark surface in the dark theme; only the outer
+  accent focus indicator changes.
 - The sort menu opens only after activating its icon, stays inside the visible
   window, marks the current temporary order, and closes after a selection. Its
   surface is light with dark text in the light theme and dark with light text in

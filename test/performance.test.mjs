@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import { DebouncedTask, StartupRefreshGate } from "../src/performance.ts";
 import {
@@ -548,6 +549,26 @@ test("collapsing compact search clears its hidden query state", () => {
     "close"
   );
   assert.deepEqual(escaped, { isExpanded: false, searchInput: "" });
+});
+
+test("compact search overrides the native focused form surface", () => {
+  const styles = readFileSync("styles.css", "utf8");
+  const inputRule = styles.match(
+    /\.twohop-links-search-control\s*>\s*input\[type="search"\]\.twohop-links-search-input\s*\{([^}]*)\}/
+  );
+
+  assert.ok(
+    inputRule,
+    "the search input must use the scoped high-specificity rule"
+  );
+  assert.match(inputRule[1], /background:\s*transparent\s*;/);
+  assert.match(inputRule[1], /border:\s*0\s*;/);
+  assert.match(inputRule[1], /border-radius:\s*0\s*;/);
+  assert.match(inputRule[1], /box-shadow:\s*none\s*;/);
+  assert.match(
+    styles,
+    /\.twohop-links-search-control:focus-within\s*\{[^}]*outline:\s*2px solid var\(--interactive-accent\)\s*;/
+  );
 });
 
 test("sort menu exposes every order and marks only the temporary current value", () => {
