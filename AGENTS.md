@@ -23,10 +23,10 @@
 
 ## Vault Deployment
 
-- Ask the user to confirm the target Vault before every deployment.
-- Plugin destination inside the selected Vault: `.obsidian/plugins/2hop-links-plus/`.
-- Before writing to a Vault, confirm the destination and create a timestamped backup outside the Vault.
-- Deploy only `main.js`, `manifest.json`, and `styles.css` unless another file is explicitly required.
+- The owner's main Vault is the standing deployment target. Deploying verified builds there does not need approval each time; any other Vault needs confirmation.
+- Plugin destination inside the Vault: `.obsidian/plugins/2hop-links-plus/`.
+- Before writing, create a timestamped backup outside the Vault.
+- Deploy only `main.js`, `manifest.json`, and `styles.css` unless another file is explicitly required. Do not change plugin settings (`data.json`), enablement, or hotkeys without asking.
 - Verify checksums after copying. Never copy Vault notes or attachments into this repository.
 
 ## Editing Safety
