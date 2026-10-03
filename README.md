@@ -40,7 +40,7 @@ Cosense / Scrapbox に近づけるため、Cosense と同じ関連ページの�
 `2hop-links-plus` を引き継ぐため、元の 2Hop Links Plus と同時にはインストールできず、
 置き換えとして動作します。導入前に既存プラグインフォルダをバックアップしてください。
 
-最新の公開版は `0.45.0` です。関連カードは Cosense と同じ並べ方で、画面に近づいたカードだけ
+最新の公開版は `0.45.1` です。関連カードは Cosense と同じ並べ方で、画面に近づいたカードだけ
 抜粋と画像を読み込みます。カードの形は PalmWiki Home と同じです。
 
 設定の `Tab switch calculation delay (ms)` は通常のタブ切替後の待ち時間です
@@ -117,7 +117,7 @@ This is not an official release of the upstream project. It intentionally keeps
 the `2hop-links-plus` plugin ID, so it replaces the upstream plugin rather than
 installing alongside it. Back up your existing plugin directory before trying it.
 
-The latest release is `0.45.0`. Related cards follow Cosense's order, read
+The latest release is `0.45.1`. Related cards follow Cosense's order, read
 excerpts and images only when they come near the screen, and share PalmWiki
 Home's card shape.
 

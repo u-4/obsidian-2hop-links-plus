@@ -5,7 +5,7 @@
 - This is a public community fork based on `2hop-links-plus` 0.37.0.
 - The Git history is rooted in the upstream `0.37.0` tag; local improvements are
   maintained on `main`.
-- Version `0.45.0` is the current release. Cards load excerpts and images only
+- Version `0.45.1` is the current release (0.45.0 plus card CSS variable fixes). Cards load excerpts and images only
   near the viewport through a shared preview store (two reads at a time,
   remembered per note version), and use PalmWiki Home's card shape. The
   excerpt, first-image rule and preview store are copied from
