@@ -39,3 +39,9 @@ AIエージェント（Claude Code・Codex）向けの作業指示です。
 ## Gitに入れないもの
 
 - `node_modules`、`main.js`（ビルドで作るもの）、`data.json`、Vaultのノートや添付、個人の絶対パス、認証情報。
+
+## ほかのセッションとの連携
+
+- PalmWiki Home・2hop-links-plus・Cosense風CSSは、それぞれのフォルダで開いたClaude Codeのセッションで開発する。ObsidianOpsのセッションは、Vaultの設定・診断・開発状況のページを受け持つ拠点。
+- 別のリポジトリの変更が要るとき（クラス名の変更に合わせたCSSなど）は、自分で直さず、`ListAgents`で相手のセッション名を確かめて`SendMessage`で頼む。相手のセッションがないときは、利用者に伝える。
+- Vaultに配置したら、ObsidianOpsのセッションに版と変更点を短く知らせる（開発状況のページの更新のため）。
