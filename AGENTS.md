@@ -1,37 +1,41 @@
 # AGENTS.md
 
-## Communication
+AIエージェント（Claude Code・Codex）向けの作業指示です。
 
-- User-facing communication must be in Japanese.
-- Explain outcomes, impact, validation, and rollback in terms suitable for a non-programmer.
+## やりとり
 
-## Project Scope
+- 利用者とのやりとりは日本語の敬体で行い、変更内容・確認方法・戻し方を、プログラマでない人にも分かる言葉で説明する。
 
-- This repository is the maintained community fork of Obsidian `2hop-links-plus` 0.37.0.
-- Source development, tests, review notes, and release artifacts belong here.
-- Personal Vault notes, attachments, paths, and operational records stay outside this repository.
+## 進め方
 
-## Build And Validation
+- 実装はClaude Codeが担当する。完成は、利用者がMac・iPhone・iPadの実際の画面で確かめられることで判断する。
+- 手順は個人用途に見合う軽さにする。自動の確認、Gitの履歴、配置前の控えで十分とし、レビュー記録や承認記録は作らない。
+- 小さな変更は`main`で直接行う。大きい変更や危ない変更のときだけ短いブランチを使う。PRは要らない。
 
-- Do not upgrade dependencies unless explicitly requested.
-- Install from the lockfile with `npm ci` when possible.
-- Required checks after source changes:
-  - `npm run build`
-  - `npm run eslint`
-  - `git diff --check`
-- Use `test-vault/` and `docs/specification/ACCEPTANCE_TESTS.md` for manual checks.
+## 対象
 
-## Vault Deployment
+- 2hop-links-plus 0.37.0（L7Cy版、2023-10から更新なし）から分かれた、利用者の改造版。公開のforkだが、使うのは利用者だけ。
+- 元のプラグインからの取り込みはしない（更新が止まっているため）。
+- PalmWiki Home（`../palmwiki-home`）とは、実行時に依存し合わない。見た目はCosense風CSS（`../../obsidian-css/obsidian-cosense-style`）がこのプラグインのクラス名に合わせて色を付けているので、クラス名を変えるときはCSSも同じ作業で直す。
+- 公開APIとメタデータのキャッシュを使い、表示のたびにVault全体の本文を読む処理は入れない。
 
-- The owner's main Vault is the standing deployment target. Deploying verified builds there does not need approval each time; any other Vault needs confirmation.
-- Plugin destination inside the Vault: `.obsidian/plugins/2hop-links-plus/`.
-- Before writing, create a timestamped backup outside the Vault.
-- Deploy only `main.js`, `manifest.json`, and `styles.css` unless another file is explicitly required. Do not change plugin settings (`data.json`), enablement, or hotkeys without asking.
-- Verify checksums after copying. Never copy Vault notes or attachments into this repository.
+## 確認
 
-## Editing Safety
+- 変更のあとに`npm run build`（型検査つき）、`npm test`、`npm run eslint`を通す。
+- 画面の確認には、必要に応じて`test-vault/`と`docs/specification/ACCEPTANCE_TESTS.md`を使う。
+- 依存パッケージは、困ることが出るまで更新しない。`npm ci`で入れる。
+- `docs/reviews/`と`docs/IMPLEMENTATION_HISTORY.md`はCodexで作業していたころの記録で、毎回の手順ではない。
 
-- Inspect Git status and relevant files before editing.
-- Preserve unrelated user changes.
-- Do not commit `node_modules`, Vault workspace files, credentials, personal notes, or review bundles containing duplicate full source archives.
-- Use public Obsidian APIs and metadata cache. Keep full-Vault text reads out of render paths.
+## 版
+
+- 版を上げるときは`manifest.json`・`package.json`・`versions.json`をそろえ、`docs/releases/<版>.md`に変更点を書いて、Gitのタグを付けて送る。GitHubのReleaseはタグからワークフローが作る。
+
+## Vaultへの配置
+
+- `npm run deploy`で、ビルド、Vaultの外への控え、`main.js`・`manifest.json`・`styles.css`の配置、SHA-256の照合、Obsidianでの再読み込みまで行う。Vaultの既定は`~/PalmWiki`（環境変数`PALMWIKI_VAULT`で変更可）。
+- 利用者のメインのVaultへの配置は、毎回の承認なしで行ってよい。ほかのVaultへの配置は確認する。
+- プラグインの設定（`data.json`）・有効化・ショートカットは、変える前に確認する。VaultはObsidian Syncで各端末と同期しているので、設定の変更は全端末に入る。
+
+## Gitに入れないもの
+
+- `node_modules`、`main.js`（ビルドで作るもの）、`data.json`、Vaultのノートや添付、個人の絶対パス、認証情報。

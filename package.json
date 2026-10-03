@@ -10,7 +10,8 @@
     "test": "node scripts/run-tests.mjs",
     "test:performance": "node scripts/run-tests.mjs",
     "benchmark": "node scripts/run-tests.mjs --benchmark",
-    "prettier": "prettier --write **/*.{tsx,md,ts}"
+    "prettier": "prettier --write **/*.{tsx,md,ts}",
+    "deploy": "npm run build && node scripts/deploy.mjs"
   },
   "keywords": [],
   "author": "",
