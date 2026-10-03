@@ -29,6 +29,7 @@ AIエージェント（Claude Code・Codex）向けの作業指示です。
 ## 版
 
 - 版を上げるときは`manifest.json`・`package.json`・`versions.json`をそろえ、`docs/releases/<版>.md`に変更点を書いて、Gitのタグを付けて送る。GitHubのReleaseはタグからワークフローが作る。
+- タグを送ったら、Releaseができて最新（Latest）がその版になったことまで確かめる（`gh release list --repo u-4/obsidian-2hop-links-plus`）。`gh`は`--repo`を付けないと元のL7Cy版を見る。
 
 ## Vaultへの配置
 
