@@ -1,44 +1,21 @@
+import { TFile } from "obsidian";
 import { FileEntity } from "./model/FileEntity";
 import { removeBlockReference } from "./utils";
-import { TFile } from "obsidian";
+import type { CardPreview } from "./cardPreview";
 import type TwohopLinksPlugin from "./main";
 
+const IMAGE_FILE_PATTERN = /\.(png|bmp|jpg|jpeg|webp|gif)$/i;
+
+/**
+ * The excerpt and image for a card. Note bodies are read through the shared
+ * PreviewStore, only while the card still needs them.
+ */
 export async function readPreview(
   this: TwohopLinksPlugin,
-  fileEntity: FileEntity
-): Promise<string> {
+  fileEntity: FileEntity,
+  isNeeded: () => boolean
+): Promise<CardPreview | null> {
   const linkText = removeBlockReference(fileEntity.linkText);
-
-  if (fileEntity.linkText.match(/\.(png|bmp|jpg|jpeg|webp)$/i)) {
-    const abstractFile = fileEntity.targetPath
-      ? this.app.vault.getAbstractFileByPath(fileEntity.targetPath)
-      : null;
-    const file =
-      abstractFile instanceof TFile
-        ? abstractFile
-        : this.app.metadataCache.getFirstLinkpathDest(
-            linkText,
-            fileEntity.sourcePath
-          );
-    if (file) {
-      const resourcePath = this.app.vault.getResourcePath(file);
-      return resourcePath;
-    }
-  }
-
-  if (
-    fileEntity.linkText.match(/\.[a-z0-9_-]+$/i) &&
-    !fileEntity.linkText.match(/\.(?:md|markdown|txt|text)$/i)
-  ) {
-    console.debug(`${fileEntity.linkText} is not a plain text file`);
-    return "";
-  }
-
-  console.debug(
-    `readPreview: getFirstLinkpathDest: ${linkText}, fileEntity.linkText=${fileEntity.linkText}
-      sourcePath=${fileEntity.sourcePath}`
-  );
-
   const abstractFile = fileEntity.targetPath
     ? this.app.vault.getAbstractFileByPath(fileEntity.targetPath)
     : null;
@@ -49,76 +26,23 @@ export async function readPreview(
           linkText,
           fileEntity.sourcePath
         );
-  if (file == null) {
-    return "";
+  if (!file) {
+    return null;
   }
-  if (file.stat.size > 1000 * 1000) {
-    // Ignore large file
-    console.debug(`File too large(${fileEntity.linkText}): ${file.stat.size}`);
-    return "";
+  if (IMAGE_FILE_PATTERN.test(file.path)) {
+    return {
+      text: "",
+      imageUrl: this.settings.showImage
+        ? this.app.vault.getResourcePath(file)
+        : null,
+    };
   }
-  const content = await this.app.vault.cachedRead(file);
-
-  const combinedMatch = content.match(
-    /<iframe[^>]*src="([^"]+)"[^>]*>|!\[[^\]]*\]\((https:\/\/www\.youtube\.com\/embed\/[^)]+|https:\/\/www\.youtube\.com\/watch\?v=[^)]+|https:\/\/youtu\.be\/[^)]+)\)|!\[(?:[^\]]*?)\]\(((?!https?:\/\/twitter\.com\/)[^)]+?(?:png|bmp|jpg|jpeg|webp))\)|!\[\[([^\]]+.(?:png|bmp|jpg|jpeg|webp))\]\]/
-  );
-  if (combinedMatch) {
-    const iframeUrl = combinedMatch[1];
-    const youtubeEmbedUrl = combinedMatch[2];
-    const img = combinedMatch[3] || combinedMatch[4];
-    if (iframeUrl) {
-      const thumbnailUrl = getThumbnailUrlFromIframeUrl(iframeUrl);
-      if (thumbnailUrl) {
-        return thumbnailUrl;
-      }
-    } else if (youtubeEmbedUrl) {
-      const youtubeThumbnailUrl = getThumbnailUrlFromIframeUrl(youtubeEmbedUrl);
-      if (youtubeThumbnailUrl) {
-        return youtubeThumbnailUrl;
-      }
-    } else if (img) {
-      console.debug(`Found image: ${img}`);
-      if (img.match(/^https?:\/\//)) {
-        return img;
-      } else {
-        const imageFile = this.app.metadataCache.getFirstLinkpathDest(
-          img,
-          file.path
-        );
-        console.debug(`Found image: ${img} = file=${imageFile}`);
-        if (imageFile) {
-          const resourcePath = this.app.vault.getResourcePath(imageFile);
-          console.debug(`Found image: ${img} resourcePath=${resourcePath}`);
-          return resourcePath;
-        }
-      }
-    }
+  if (file.extension !== "md") {
+    return { text: "", imageUrl: null };
   }
-
-  const updatedContent = content.replace(/^(.*\n)?---[\s\S]*?---\n?/m, "");
-  const lines = shortenExternalLinkInPreview(updatedContent).split(/\n/);
-  return lines
-    .filter((it: string) => {
-      return it.match(/\S/) && !it.match(/^#/) && !it.match(/^https?:\/\//);
-    })
-    .slice(0, 6)
-    .join("\n");
-}
-
-export function getThumbnailUrlFromIframeUrl(iframeUrl: string): string | null {
-  const youtubeIdMatch = iframeUrl.match(
-    /(?:https?:\/\/)?(?:www\.)?youtube\.com\/embed\/([^?&]+)(?:\?[^?]+)?$|(?:https?:\/\/)?(?:www\.)?youtube\.com\/watch\?v=([^?&]+)(?:\?[^?]+)?$|(?:https?:\/\/)?(?:youtu\.be\/)([^?&]+)(?:\?[^?]+)?$/
-  );
-  if (youtubeIdMatch) {
-    const youtubeId =
-      youtubeIdMatch[1] || youtubeIdMatch[2] || youtubeIdMatch[3];
-    return `https://img.youtube.com/vi/${youtubeId}/mqdefault.jpg`;
+  const preview = await this.previewStore.read(file, isNeeded);
+  if (!preview || this.settings.showImage) {
+    return preview;
   }
-
-  return null;
-}
-
-export function shortenExternalLinkInPreview(content: string): string {
-  const regex = /\[([^\]]+)\]\(([^)]+)\)/g;
-  return content.replace(regex, "[$1](...)");
+  return { ...preview, imageUrl: null };
 }

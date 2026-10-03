@@ -163,6 +163,18 @@ Expected result:
   expanded.
 - Adding or removing a link updates the cards once.
 
+## 8a. Cards
+
+Open a note with many related cards and scroll through them.
+
+Expected result:
+
+- Cards keep a fixed height with a two-line title, an image when the note
+  embeds one (or links a YouTube video), and a short excerpt.
+- Excerpts appear as cards come near the screen; cards far below stay
+  title-only until scrolled to.
+- Turning off `Show Image in the 2hop Links` hides the images.
+
 ## 9. Card search/filter
 
 Open `Active.md` and use the search box above the cards.

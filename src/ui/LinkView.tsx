@@ -3,18 +3,23 @@ import { FileEntity } from "../model/FileEntity";
 import { removeBlockReference } from "../utils";
 import { App, Menu, HoverParent, HoverPopover } from "obsidian";
 import { HOVER_LINK_ID } from "../main";
-import { OpenPaneTarget } from "../types";
+import { GetCardPreview, OpenPaneTarget } from "../types";
+import type { CardPreview } from "../cardPreview";
 
 interface LinkViewProps {
   fileEntity: FileEntity;
   onClick: (fileEntity: FileEntity, newLeaf?: OpenPaneTarget) => Promise<void>;
-  getPreview: (fileEntity: FileEntity, signal: AbortSignal) => Promise<string>;
+  getPreview: GetCardPreview;
   getTitle: (fileEntity: FileEntity, signal: AbortSignal) => Promise<string>;
   app: App;
 }
 
+// Start reading a card's excerpt a little before it scrolls into view.
+const PREVIEW_ROOT_MARGIN = "200px";
+
 interface LinkViewState {
-  preview: string | null;
+  preview: CardPreview | null;
+  isImageBroken: boolean;
   title: string | null;
   mouseDown: boolean;
   dragging: boolean;
@@ -26,6 +31,9 @@ export default class LinkView
   implements HoverParent
 {
   private abortController: AbortController | null = null;
+  private readonly cardRef = React.createRef<HTMLDivElement>();
+  private observer: IntersectionObserver | null = null;
+  private isNearViewport = false;
   hoverPopover: HoverPopover | null;
   isMobile: boolean;
 
@@ -33,6 +41,7 @@ export default class LinkView
     super(props);
     this.state = {
       preview: null,
+      isImageBroken: false,
       title: null,
       mouseDown: false,
       dragging: false,
@@ -41,18 +50,42 @@ export default class LinkView
     this.isMobile = window.matchMedia("(pointer: coarse)").matches;
   }
 
-  async componentDidMount(): Promise<void> {
-    await this.loadPreviewAndTitle();
+  componentDidMount(): void {
+    this.observeViewport();
+    void this.loadCard();
   }
 
-  async componentDidUpdate(prevProps: LinkViewProps): Promise<void> {
+  componentDidUpdate(prevProps: LinkViewProps): void {
     if (this.fileEntityKey(prevProps.fileEntity) !== this.fileEntityKey()) {
-      await this.loadPreviewAndTitle();
+      this.setState({ preview: null, isImageBroken: false, title: null });
+      void this.loadCard();
     }
   }
 
   componentWillUnmount(): void {
     this.abortController?.abort();
+    this.observer?.disconnect();
+  }
+
+  private observeViewport(): void {
+    const element = this.cardRef.current;
+    const ownerWindow = element?.ownerDocument.defaultView;
+    if (!element || !ownerWindow || !("IntersectionObserver" in ownerWindow)) {
+      this.isNearViewport = true;
+      return;
+    }
+    this.observer = new ownerWindow.IntersectionObserver(
+      (entries) => {
+        const isNear = entries.some((entry) => entry.isIntersecting);
+        if (isNear === this.isNearViewport) return;
+        this.isNearViewport = isNear;
+        if (isNear && this.state.preview === null) {
+          void this.loadPreview();
+        }
+      },
+      { rootMargin: PREVIEW_ROOT_MARGIN }
+    );
+    this.observer.observe(element);
   }
 
   private fileEntityKey(fileEntity = this.props.fileEntity): string {
@@ -61,16 +94,11 @@ export default class LinkView
     }`;
   }
 
-  private async loadPreviewAndTitle(): Promise<void> {
+  private async loadCard(): Promise<void> {
     this.abortController?.abort();
     const abortController = new AbortController();
     this.abortController = abortController;
     const fileEntityKey = this.fileEntityKey();
-    this.setState({ preview: null, title: null });
-    const preview = await this.props.getPreview(
-      this.props.fileEntity,
-      abortController.signal
-    );
     const title = await this.props.getTitle(
       this.props.fileEntity,
       abortController.signal
@@ -79,10 +107,27 @@ export default class LinkView
       !abortController.signal.aborted &&
       fileEntityKey === this.fileEntityKey()
     ) {
-      this.setState({
-        preview: preview,
-        title: title,
-      });
+      this.setState({ title });
+    }
+    if (this.isNearViewport) {
+      await this.loadPreview();
+    }
+  }
+
+  private async loadPreview(): Promise<void> {
+    const abortController = this.abortController;
+    if (!abortController || abortController.signal.aborted) return;
+    const fileEntityKey = this.fileEntityKey();
+    const preview = await this.props.getPreview(
+      this.props.fileEntity,
+      () => !abortController.signal.aborted && this.isNearViewport
+    );
+    if (
+      preview &&
+      !abortController.signal.aborted &&
+      fileEntityKey === this.fileEntityKey()
+    ) {
+      this.setState({ preview, isImageBroken: false });
     }
   }
 
@@ -172,6 +217,7 @@ export default class LinkView
   render(): JSX.Element {
     return (
       <div
+        ref={this.cardRef}
         className="twohop-links-box twohop-links-card"
         onTouchStart={() => {
           this.setState({ touchStart: Date.now() });
@@ -211,13 +257,20 @@ export default class LinkView
         }}
       >
         <div className="twohop-links-box-title">{this.state.title}</div>
-        <div className={"twohop-links-box-preview"}>
-          {this.state.preview &&
-          this.state.preview.match(/^(app|https?):\/\//) ? (
-            <img src={this.state.preview} alt={"preview image"} />
-          ) : (
-            <div>{this.state.preview}</div>
-          )}
+        {this.state.preview?.imageUrl && !this.state.isImageBroken && (
+          <div className="twohop-links-box-media">
+            <img
+              src={this.state.preview.imageUrl}
+              alt=""
+              loading="lazy"
+              decoding="async"
+              draggable={false}
+              onError={() => this.setState({ isImageBroken: true })}
+            />
+          </div>
+        )}
+        <div className="twohop-links-box-preview">
+          {this.state.preview?.text}
         </div>
       </div>
     );

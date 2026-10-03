@@ -5,11 +5,14 @@
 - This is a public community fork based on `2hop-links-plus` 0.37.0.
 - The Git history is rooted in the upstream `0.37.0` tag; local improvements are
   maintained on `main`.
-- Version `0.44.0` is the current release. It replaces the guessed related
-  score and PageRank-style ranking with Cosense's related-page order (Links,
-  2-hop groups in link order, New Links), merges Links and Back Links, removes
-  the Properties section, and keeps one vault link index updated per changed
-  note. Settings migrate the saved sort order to `related`.
+- Version `0.45.0` is the current release. Cards load excerpts and images only
+  near the viewport through a shared preview store (two reads at a time,
+  remembered per note version), and use PalmWiki Home's card shape. The
+  excerpt, first-image rule and preview store are copied from
+  `palmwiki-home/main.js`; keep them in step. Theme CSS may set the
+  `--cosense-card-*` variables.
+- 0.44.0 replaced the guessed related score and PageRank-style ranking with
+  Cosense's related-page order and one vault link index.
 - A three-step plan (0.43.0 stability, 0.44.0 Cosense-style Related order,
   0.45.0 lazy cards aligned with PalmWiki Home) was agreed on 2026-10-04.
 - The repository is intended for source development, review, and reproducible releases.

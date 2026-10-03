@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
+import { TFile } from "obsidian";
 import { DebouncedTask, StartupRefreshGate } from "../src/performance.ts";
 import {
   ALL_MARKDOWN_HOST_SELECTOR,
@@ -16,6 +17,7 @@ import {
 } from "../src/linkSignature.ts";
 import { buildRelatedPages, LARGE_GROUP_SIZE } from "../src/cosenseRelated.ts";
 import { LinkIndex } from "../src/linkIndex.ts";
+import { excerpt, findWebImage, PreviewStore } from "../src/cardPreview.ts";
 import { migrateSortOrder } from "../src/settings/sortOptions.ts";
 import { chooseInlineRestoreLeaf } from "../src/inlineRestoreLeaf.ts";
 import { Links } from "../src/links.ts";
@@ -986,4 +988,89 @@ test("saved sort orders from earlier versions map to the new choices", () => {
   assert.equal(migrateSortOrder("modifiedDesc"), "modifiedDesc");
   assert.equal(migrateSortOrder("mostLinkedDesc"), "mostLinkedDesc");
   assert.equal(migrateSortOrder(undefined), "related");
+});
+
+test("card excerpts drop frontmatter, code, embeds and Markdown syntax", () => {
+  const body = [
+    "---",
+    "tags: [a]",
+    "---",
+    "# Heading",
+    "- item with [[Target|shown name]] and [[Plain]]",
+    "![[photo.png]]",
+    "```js",
+    "const hidden = 1;",
+    "```",
+    "**bold** and [web](https://example.com)",
+  ].join("\n");
+  assert.equal(
+    excerpt(body),
+    "Heading item with shown name and Plain bold and web"
+  );
+  assert.equal(excerpt("---\nno end"), "");
+  assert.ok(excerpt("x".repeat(1000)).length <= 280);
+});
+
+test("web images and YouTube embeds give a card image", () => {
+  assert.equal(
+    findWebImage("![](https://www.youtube.com/watch?v=abcdefGHIJ1)"),
+    "https://img.youtube.com/vi/abcdefGHIJ1/mqdefault.jpg"
+  );
+  assert.equal(
+    findWebImage('<iframe src="https://www.youtube.com/embed/abcdefGHIJ1"></iframe>'),
+    "https://img.youtube.com/vi/abcdefGHIJ1/mqdefault.jpg"
+  );
+  assert.equal(
+    findWebImage("![](https://example.com/a.png)"),
+    "https://example.com/a.png"
+  );
+  assert.equal(findWebImage("![](https://example.com/page)"), null);
+  assert.equal(findWebImage("no images"), null);
+});
+
+test("the preview store reads each note once, two at a time, and skips unneeded cards", async () => {
+  const files = ["a", "b", "c", "d"].map(
+    (name) => new TFile(`${name}.md`, { size: 10 })
+  );
+  let active = 0;
+  let maxActive = 0;
+  let reads = 0;
+  const app = {
+    vault: {
+      getAbstractFileByPath: (path) => files.find((f) => f.path === path) ?? null,
+      cachedRead: async (file) => {
+        reads++;
+        active++;
+        maxActive = Math.max(maxActive, active);
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        active--;
+        return `body of ${file.basename}`;
+      },
+      getResourcePath: (file) => `app://${file.path}`,
+    },
+    metadataCache: {
+      getFileCache: () => null,
+      getFirstLinkpathDest: () => null,
+    },
+  };
+  const store = new PreviewStore(app);
+  const needed = () => true;
+  const results = await Promise.all([
+    store.read(files[0], needed),
+    store.read(files[0], needed),
+    store.read(files[1], needed),
+    store.read(files[2], needed),
+    store.read(files[3], () => false),
+  ]);
+  assert.equal(results[0].text, "body of a");
+  assert.equal(results[1], results[0]);
+  assert.equal(results[4], null, "a card that left the screen is not read");
+  assert.equal(reads, 3);
+  assert.ok(maxActive <= 2);
+  assert.equal((await store.read(files[0], needed)).text, "body of a");
+  assert.equal(reads, 3, "a remembered preview is not read again");
+  files[0].stat.mtime += 1;
+  await store.read(files[0], needed);
+  assert.equal(reads, 4, "an edited note is read again");
+  store.dispose();
 });

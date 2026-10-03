@@ -1,6 +1,8 @@
 :root {
-  --box-width: 139px;
-  --box-height: 170px;
+  /* Card size follows PalmWiki Home. Theme CSS can set the --cosense-card-*
+     variables once for both plugins. */
+  --box-width: 180px;
+  --box-height: 220px;
   --box-font-size: 100%;
   --twohop-toolbar-control-size: 36px;
   --twohop-search-radius: 6px;
@@ -12,7 +14,6 @@
 /* switch light/dark mode */
 .theme-light {
   --bg-box: #ffffff;
-  --bg-box-top: #e2e2e2;
   --title-box: #363c49;
   --text-box: #5f6773;
   --bg-header-twohop: #9babc1;
@@ -27,7 +28,6 @@
 
 .theme-dark {
   --bg-box: #373b44;
-  --bg-box-top: #2b2e38;
   --title-box: #f0f0f0;
   --text-box: #b4b5b6;
   --bg-header-twohop: #2b2e38;
@@ -60,8 +60,11 @@
 }
 .twohop-links-section {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(var(--box-width), 1fr));
-  grid-gap: 8px;
+  grid-template-columns: repeat(
+    auto-fill,
+    minmax(min(var(--cosense-card-min-width, var(--box-width)), 100%), 1fr)
+  );
+  gap: var(--cosense-card-gap, 12px);
   margin: 20px;
   font-size: var(--box-font-size);
 }
@@ -69,19 +72,32 @@
 /* common */
 .twohop-links-box {
   box-sizing: border-box;
-  max-height: var(--box-height);
-  padding: 10px;
-  background-color: var(--bg-box);
-  border-radius: 2px;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  height: var(--cosense-card-height, var(--box-height));
+  padding: var(--cosense-card-padding, 12px);
+  border-radius: var(--cosense-card-radius, 8px);
   overflow: hidden;
-  box-shadow: 0px 2px 2px rgba(0, 0, 0, 0.25);
   cursor: pointer;
-  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+.twohop-links-section-header {
+  box-shadow: 0px 2px 2px rgba(0, 0, 0, 0.25);
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .twohop-links-box:hover {
+  .twohop-links-section-header:hover,
+  .twohop-links-load-more:hover {
     filter: brightness(0.8) contrast(0.8);
+  }
+
+  .twohop-links-card:hover {
+    background: var(
+      --cosense-card-hover-bg,
+      color-mix(in srgb, var(--bg-box), var(--title-box) 6%)
+    );
   }
 }
 
@@ -89,31 +105,46 @@
   filter: brightness(0.9) contrast(0.9);
 }
 
+/* Note cards */
+.twohop-links-card {
+  background: var(--cosense-card-bg, var(--bg-box));
+  border: 1px solid var(--cosense-card-border, var(--background-modifier-border));
+  contain: layout style;
+}
+
 .twohop-links-box-title {
-  color: var(--title-box);
-  font-size: 90%;
-  font-weight: 500;
-  margin-bottom: 10px;
+  flex-shrink: 0;
+  margin-bottom: 9px;
+  color: var(--cosense-card-title, var(--title-box));
+  font-weight: 600;
   display: -webkit-box;
   overflow: hidden;
   -webkit-box-orient: vertical;
-  white-space: unset;
-  -webkit-line-clamp: 3;
+  -webkit-line-clamp: 2;
 }
 
-.twohop-links-box img {
-  margin: auto;
+.twohop-links-box-media {
+  flex: 0 0 var(--cosense-card-media-height, 80px);
+  height: var(--cosense-card-media-height, 80px);
+  margin-bottom: 8px;
+  overflow: hidden;
+  border-radius: 4px;
+  background: var(--background-secondary);
 }
 
-/* Note cards */
-.twohop-links-card {
-  border-top: 10px solid var(--bg-box-top);
+.twohop-links-box-media img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  object-fit: cover;
 }
 
 .twohop-links-box-preview {
-  color: var(--text-box);
-  font-size: 85%;
-  white-space: pre-line;
+  overflow: hidden;
+  color: var(--cosense-card-text, var(--text-box));
+  font-size: var(--font-ui-small);
+  line-height: 1.6;
 }
 
 /* connected links */
@@ -350,17 +381,8 @@ body:not(.zoom-off)
   }
 
   .twohop-links-box {
-    min-height: 180px;
-    max-height: max(var(--box-height), 220px);
-  }
-
-  .twohop-links-box-title {
-    font-size: 100%;
-  }
-
-  .twohop-links-box-preview {
-    font-size: 90%;
-    line-height: 1.45;
+    height: var(--cosense-card-height-narrow, 205px);
+    padding: 10px;
   }
 
   .twohop-links-search-status {
@@ -482,13 +504,13 @@ settings:
         id: box-width
         title: Box min width (px)
         type: variable-number
-        default: 139
+        default: 180
         format: px
     -
         id: box-height
-        title: Box max height (px)
+        title: Box height (px)
         type: variable-number
-        default: 170
+        default: 220
         format: px
     -
         id: box-font-size
@@ -496,34 +518,6 @@ settings:
         type: variable-number
         default: 100
         format: '%'
-    -
-        id: title-box
-        title: Title color
-        type: variable-themed-color
-        format: hex
-        default-light: '#363c49'
-        default-dark: '#f0f0f0'
-    -
-        id: text-box
-        title: Text color
-        type: variable-themed-color
-        format: hex
-        default-light: '#5f6773'
-        default-dark: '#b4b5b6'
-    -
-        id: bg-box-top
-        title: Box color (Top)
-        type: variable-themed-color
-        format: hex
-        default-light: '#e2e2e2'
-        default-dark: '#2b2e38'
-    -
-        id: bg-box
-        title: Box color
-        type: variable-themed-color
-        format: hex
-        default-light: '#ffffff'
-        default-dark: '#373b44'
     -
         id: bg-header-connected
         title: Header box color (Links & Backlinks)

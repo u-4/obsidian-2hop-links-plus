@@ -44,6 +44,7 @@ import {
 } from "./markdownHostReadiness";
 import { chooseInlineRestoreLeaf } from "./inlineRestoreLeaf";
 import { LinkSignatureTracker } from "./linkSignature";
+import { PreviewStore } from "./cardPreview";
 import type { CachedMetadata } from "obsidian";
 
 const CONTAINER_CLASS = "twohop-links-container";
@@ -59,6 +60,7 @@ export default class TwohopLinksPlugin extends Plugin {
   settings: TwohopPluginSettings;
   showLinksInMarkdown: boolean;
   links: Links;
+  previewStore: PreviewStore;
 
   private readonly linkSignatures = new LinkSignatureTracker(() => ({
     frontmatterPropertyKeyAsTitle: this.settings.frontmatterPropertyKeyAsTitle,
@@ -90,6 +92,7 @@ export default class TwohopLinksPlugin extends Plugin {
     this.settings = await loadSettings(this);
     this.showLinksInMarkdown = true;
     this.links = new Links(this.app, this.settings);
+    this.previewStore = new PreviewStore(this.app);
     this.scrollNavigator = new MarkdownScrollNavigator(async (view) => {
       const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
       if (activeView === view && !this.settings.showTwoHopLinksInSeparatePane) {
@@ -202,6 +205,7 @@ export default class TwohopLinksPlugin extends Plugin {
     this.refreshTask.cancel();
     this.links.cancelPendingCalculations();
     this.disableLinksInMarkdown();
+    this.previewStore.dispose();
     console.log("unloading plugin");
   }
 

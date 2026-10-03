@@ -23,7 +23,7 @@ Cosense / Scrapbox に近づけるため、Cosense と同じ関連ページの�
 - 既定と異なる一時ソートを示すアクセント色のドットと、ライト／ダークで読みやすい
   ソートメニュー
 - 2-hop カードとリンク元のカードから、該当リンク行へのジャンプ
-- WebP 画像と相対パス埋め込み画像のプレビュー改善
+- 画面に近づいたカードだけ抜粋と画像を読み込み、読んだ内容を覚えておくカード表示
 - Hover Preview や Hover Editor に影響されないアクティブノート追従
 - 同名ノート、ピン留めタブ、非同期プレビューの安定性改善
 - 長文ノートの上部と 2-hop 表示を往復できる、円形のヘッダーボタン
@@ -40,9 +40,8 @@ Cosense / Scrapbox に近づけるため、Cosense と同じ関連ページの�
 `2hop-links-plus` を引き継ぐため、元の 2Hop Links Plus と同時にはインストールできず、
 置き換えとして動作します。導入前に既存プラグインフォルダをバックアップしてください。
 
-最新の公開版は `0.44.0` です。関連カードの並べ方を、推測で作った独自の点数から、Cosense が
-実際に使っている並べ方に置き換えました。Links と Back Links は1つの Links にまとまり、
-Properties の欄はなくなりました。
+最新の公開版は `0.45.0` です。関連カードは Cosense と同じ並べ方で、画面に近づいたカードだけ
+抜粋と画像を読み込みます。カードの形は PalmWiki Home と同じです。
 
 設定の `Tab switch calculation delay (ms)` は通常のタブ切替後の待ち時間です
 （既定 `200` ms）。コマンドパレットの `Show performance statistics` と
@@ -101,7 +100,7 @@ fixes.
   sorting, plus readable two-column cards on iPhone-sized or narrow split panes
 - An accent dot for temporary sort overrides and a legible light/dark sort menu
 - Jump from 2-hop cards and cards for linking notes to the relevant link line
-- Better WebP and candidate-relative embedded-image previews
+- Cards read excerpts and images only near the screen and remember them
 - Active-note tracking that ignores Hover Preview and Hover Editor popups
 - Stability fixes for duplicate basenames, pinned tabs, and asynchronous previews
 - A circular header control for moving between a long note's top and its 2-hop results
@@ -118,9 +117,9 @@ This is not an official release of the upstream project. It intentionally keeps
 the `2hop-links-plus` plugin ID, so it replaces the upstream plugin rather than
 installing alongside it. Back up your existing plugin directory before trying it.
 
-The latest release is `0.44.0`. It replaces the guessed related score and
-PageRank-style ranking with the order Cosense actually uses, merges Links and
-Back Links, and removes the Properties section.
+The latest release is `0.45.0`. Related cards follow Cosense's order, read
+excerpts and images only when they come near the screen, and share PalmWiki
+Home's card shape.
 
 `Tab switch calculation delay (ms)` controls the normal post-switch delay and
 defaults to `200` ms. The command palette actions `Show performance statistics`

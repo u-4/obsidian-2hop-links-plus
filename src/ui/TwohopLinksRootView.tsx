@@ -7,7 +7,7 @@ import NewLinksView from "./NewLinksView";
 import { PropertiesLinks } from "../model/PropertiesLinks";
 import { App, Menu, setIcon } from "obsidian";
 import PropertiesLinksListView from "./TagLinksListView";
-import { OpenPaneTarget } from "../types";
+import { GetCardPreview, OpenPaneTarget } from "../types";
 import {
   BODY_SEARCH_DEBOUNCE_MS,
   collectVisibleCardSearchEntities,
@@ -35,7 +35,7 @@ interface TwohopLinksRootViewProps {
   twoHopLinks: TwohopLink[];
   tagLinksList: PropertiesLinks[];
   onClick: (fileEntity: FileEntity, newLeaf?: OpenPaneTarget) => Promise<void>;
-  getPreview: (fileEntity: FileEntity) => Promise<string>;
+  getPreview: GetCardPreview;
   getTitle: (fileEntity: FileEntity) => Promise<string>;
   app: App;
   showLinks: boolean;

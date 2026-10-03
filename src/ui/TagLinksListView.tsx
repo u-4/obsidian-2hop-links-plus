@@ -3,12 +3,12 @@ import { FileEntity } from "../model/FileEntity";
 import LinkView from "./LinkView";
 import { PropertiesLinks } from "../model/PropertiesLinks";
 import { App, setIcon } from "obsidian";
-import { OpenPaneTarget } from "../types";
+import { GetCardPreview, OpenPaneTarget } from "../types";
 
 interface PropertiesLinksListViewProps {
   propertiesLinksList: PropertiesLinks[];
   onClick: (fileEntity: FileEntity, newLeaf?: OpenPaneTarget) => Promise<void>;
-  getPreview: (fileEntity: FileEntity) => Promise<string>;
+  getPreview: GetCardPreview;
   getTitle: (fileEntity: FileEntity) => Promise<string>;
   app: App;
   displayedSectionCount: number;
@@ -19,7 +19,7 @@ interface PropertiesLinksListViewProps {
 interface LinkComponentProps {
   tagLink: PropertiesLinks;
   onClick: (fileEntity: FileEntity, newLeaf?: OpenPaneTarget) => Promise<void>;
-  getPreview: (fileEntity: FileEntity) => Promise<string>;
+  getPreview: GetCardPreview;
   getTitle: (fileEntity: FileEntity) => Promise<string>;
   app: App;
   initialDisplayedEntitiesCount: number;

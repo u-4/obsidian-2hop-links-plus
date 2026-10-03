@@ -2,13 +2,13 @@ import React, { createRef } from "react";
 import { FileEntity } from "../model/FileEntity";
 import LinkView from "./LinkView";
 import { App, setIcon } from "obsidian";
-import { OpenPaneTarget } from "../types";
+import { GetCardPreview, OpenPaneTarget } from "../types";
 
 interface NewLinksViewProps {
   fileEntities: FileEntity[];
   displayedBoxCount: number;
   onClick: (fileEntity: FileEntity, newLeaf?: OpenPaneTarget) => Promise<void>;
-  getPreview: (fileEntity: FileEntity) => Promise<string>;
+  getPreview: GetCardPreview;
   getTitle: (fileEntity: FileEntity) => Promise<string>;
   onLoadMore: () => void;
   app: App;
