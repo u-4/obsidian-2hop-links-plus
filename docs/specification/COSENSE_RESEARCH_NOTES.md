@@ -1,129 +1,69 @@
-# Cosense research notes and implementation rationale
+# Cosense related-page list: research notes
 
-## What is known from public information
+Updated on 2026-10-04 for 0.44.0. Earlier notes guessed a weighted "related
+score" and a PageRank-like composite; both were wrong and were removed.
 
-Cosense/Scrapbox related page cards are based on links between pages. In Cosense, a page's related page list shows pages reachable through the current page's links, including 2-hop links. Public help describes this as pages that share common links or hashtags, with one more hop through the linked page.
+## Sources
 
-Cosense also has a related-page-list search feature called 2 hop search.
+- Cosense's browser code, which computes the order on the client:
+  `https://scrapbox.io/assets/dedicated-worker.js`, `index.js` and the sort
+  menu chunk, read on 2026-10-04. File names change between releases. The
+  plugin re-expresses the behaviour in its own code; no Cosense code is copied.
+- Help pages: https://scrapbox.io/help-jp/関連ページリスト and
+  https://scrapbox.io/help/Related_pages
+- Release notes 2018–2024 on https://scrapbox.io/help-jp/ (PageRank sort added
+  2024-04-19; PageRank components listed 2024-01-18).
+- Community observations: https://scrapbox.io/villagepump/ and
+  https://scrapbox.io/scrapboxlab/relatedPageSort
 
-For PageRank, Cosense's public 2024 release note states that PageRank is calculated by weighting four features:
+## What the list contains (confirmed)
 
-```text
-被リンク数
-被リンクページの被リンク数
-リンク数
-編集頻度
-```
+From top to bottom:
 
-English interpretation:
+1. **Links**: pages the current page links to and pages that link to it.
+2. External links to other projects (not applicable to Obsidian).
+3. **One group per link** in the current page ("2-hop"): pages that share that
+   link.
+4. **New Links**: links to missing pages that no related page shares.
 
-```text
-backlink count
-backlinking pages' backlink count
-link count
-edit frequency
-```
+## Groups (confirmed)
 
-Therefore, implement a Cosense-like composite score rather than classic iterative Google PageRank.
+- Group headings are the current page's links in the order they are written.
+- Every page sharing the link belongs to the group, but a page is shown only
+  under the first group it matches, and pages already in Links are not shown
+  again.
+- Groups with at most 100 pages keep the link order. Larger groups move to the
+  end, smallest first.
+- A link to a missing page forms a group when another page has the same link.
 
-## What is inferred, not confirmed
+## Related order (confirmed)
 
-The exact Cosense weights, normalization, duplicate handling, and section assignment rules are not public.
+The sort menu offers Related (default), Modified, Created, Last visited, Most
+linked, Page rank and Title. Obsidian has no visit counts or published
+PageRank, so the plugin offers Related, Modified, Created, Most linked and
+Title.
 
-The related sort appears to be influenced by:
+For Related, each page gets a list of relations to the current page, in this
+order: the current page links to it; it links to the current page; then each
+of the current page's links that it also has, in the order they appear in the
+candidate page. The first relation decides the tier: linked-to pages come
+first, then pages linking back, then pages sharing a link, where a shared link
+written earlier in the current page ranks higher. Within a tier, more
+relations rank higher, and ties go to the most recently modified page.
 
-```text
-current page's outgoing link order
-shared links between current page and candidate page
-possibly direct links/backlinks
-possibly page-level importance
-```
+There is no weighting by how rare a link is. Hub pages are kept from
+dominating by the one-group-per-page rule and by moving large groups to the
+end.
 
-Because the exact algorithm is uncertain, this plugin should offer two related modes:
+## Updates (confirmed)
 
-```text
-Related, Cosense-like
-  Use current page outgoing link order as the dominant section-order signal.
+The list is recomputed when a saved change alters the page's links, or when
+another user's change touches a related page. Typing text alone does not
+reorder it. The plugin follows this through its link-signature check.
 
-Related score
-  Use a more useful Obsidian-specific score based on shared rare links, shared link count, active-link order, and direct links.
-```
+## Not reproduced
 
-## Recommended design distinction
-
-Do not merge PageRank and relatedness too aggressively.
-
-```text
-Related score = how close candidate C is to the currently active page P.
-Page rank = how important candidate C is globally within the vault.
-```
-
-This distinction lets users choose between contextual navigation and global importance.
-
-## Recommended related score
-
-```text
-relatedScore(P, C)
-= 0.55 * normalized sharedIdf(P, C)
-+ 0.20 * normalized log(1 + sharedCount(P, C))
-+ 0.15 * normalized orderAffinity(P, C)
-+ 0.10 * directLinkBonus(P, C)
-```
-
-Where:
-
-```text
-shared(P, C) = Out(P) ∩ Out(C)
-sharedCount(P, C) = |shared(P, C)|
-idf(m) = log((N + 1) / (inDegree(m) + 1)) + 1
-sharedIdf(P, C) = sum idf(m) for m in shared(P, C)
-orderAffinity(P, C) = sum idf(m) / (1 + indexInActivePage(m))
-directLinkBonus(P, C) = 1 if P -> C, 0.8 if C -> P, 1 if both, else 0
-```
-
-Rationale:
-
-- Rare shared links usually indicate stronger semantic relation than common hub links.
-- Shared link count still matters.
-- Active page link order is included because Cosense-like behavior appears to use the current page's link order.
-- Direct links/backlinks are useful relation evidence.
-
-## Recommended PageRank-like score
-
-```text
-pageRank(p)
-= 0.40 * N(log1p(inDegree(p)))
-+ 0.25 * N(sum_{s in In(p)} log1p(inDegree(s)))
-+ 0.15 * N(log1p(outDegree(p)))
-+ 0.20 * N(editScore(p))
-```
-
-Initial edit score:
-
-```text
-editScore(p) = exp(-daysSinceModified(p) / 90)
-```
-
-This uses last modified time as an approximation for edit frequency. A closer future version could record actual edit counts over 30/90/365 days.
-
-## Tags and unresolved links
-
-Cosense treats hashtags as links. Obsidian tags are often operational labels such as `#todo`, `#meeting`, or `#draft`; treating all tags as normal links can distort ranking. Therefore:
-
-```text
-includeTagsAsLinksForRanking = false by default
-```
-
-Unresolved links can be useful for Cosense-like behavior. However, resolved links are simpler and safer for the initial implementation. If unresolved links are included, represent them as virtual nodes and avoid trying to open them as files unless the user explicitly clicks a New Link.
-
-## Cosense API caution
-
-Do not depend on Cosense internal APIs for this plugin. This task should run entirely inside Obsidian using the local vault and Obsidian's metadata cache.
-
-## Source URLs
-
-- Cosense related page list: https://scrapbox.io/help-jp/%E9%96%A2%E9%80%A3%E3%83%9A%E3%83%BC%E3%82%B8%E3%83%AA%E3%82%B9%E3%83%88
-- Cosense 2 hop search: https://scrapbox.io/help-jp/2_hop_search
-- Cosense 2023 release notes, 2 hop search entries: https://scrapbox.io/help-jp/%E3%83%AA%E3%83%AA%E3%83%BC%E3%82%B9%E3%83%8E%E3%83%BC%E3%83%882023
-- Cosense 2024 release notes, PageRank components: https://scrapbox.io/help-jp/%E3%83%AA%E3%83%AA%E3%83%BC%E3%82%B9%E3%83%8E%E3%83%BC%E3%83%882024
-- Obsidian API type definitions: https://raw.githubusercontent.com/obsidianmd/obsidian-api/master/obsidian.d.ts
+- PageRank: Cosense computes it in a nightly batch from backlinks, backlinks of
+  backlinking pages, links and edit frequency; the weights are not public.
+- Folding of similar titles (such as dated pages) inside Links.
+- Hidden headwords and synonyms, which Cosense configures per project.

@@ -41,7 +41,7 @@ confirm the following interaction behavior:
 
 - Switching normal or pinned main-note tabs updates the 2-hop pane.
 - Hover Preview and Hover Editor popups do not change the 2-hop pane target.
-- 2-hop and Back Links cards jump to the relevant link line.
+- 2-hop cards and Links cards for notes linking back jump to the relevant link line.
 - WebP and relative embedded images render in cards.
 - The first calculation does not start during workspace layout restoration.
 - Rapid tab switching settles on the last selected note without a stale render.

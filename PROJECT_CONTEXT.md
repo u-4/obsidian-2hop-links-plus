@@ -5,10 +5,11 @@
 - This is a public community fork based on `2hop-links-plus` 0.37.0.
 - The Git history is rooted in the upstream `0.37.0` tag; local improvements are
   maintained on `main`.
-- Version `0.43.0` is the current release. It stops recomputing and reordering
-  related cards while a note is edited unless its links, tags, or title
-  frontmatter change, renders only into the visible Markdown mode, and makes the
-  random order stable.
+- Version `0.44.0` is the current release. It replaces the guessed related
+  score and PageRank-style ranking with Cosense's related-page order (Links,
+  2-hop groups in link order, New Links), merges Links and Back Links, removes
+  the Properties section, and keeps one vault link index updated per changed
+  note. Settings migrate the saved sort order to `related`.
 - A three-step plan (0.43.0 stability, 0.44.0 Cosense-style Related order,
   0.45.0 lazy cards aligned with PalmWiki Home) was agreed on 2026-10-04.
 - The repository is intended for source development, review, and reproducible releases.

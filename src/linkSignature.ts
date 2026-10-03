@@ -1,14 +1,13 @@
 import type { CachedMetadata } from "obsidian";
 
 export interface LinkSignatureOptions {
-  frontmatterKeys: string[];
   frontmatterPropertyKeyAsTitle: string;
 }
 
 /**
  * Summarizes everything in a note's metadata that the related-links view
  * depends on: links, embeds and frontmatter links in document order, tags, and
- * the frontmatter values used for properties sections and card titles.
+ * the frontmatter values used for card titles.
  * Typing ordinary text leaves the signature unchanged.
  */
 export function getLinkSignature(
@@ -34,7 +33,7 @@ export function getLinkSignature(
   );
   const tags = (cache.tags ?? []).map((tag) => tag.tag);
   const frontmatter = cache.frontmatter ?? {};
-  const keys = [...options.frontmatterKeys];
+  const keys: string[] = [];
   if (options.frontmatterPropertyKeyAsTitle) {
     keys.push(options.frontmatterPropertyKeyAsTitle);
   }

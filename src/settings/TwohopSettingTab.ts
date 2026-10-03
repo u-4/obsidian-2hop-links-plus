@@ -11,7 +11,6 @@ export interface TwohopPluginSettings {
   showTwohopLinks: boolean;
   showNewLinks: boolean;
   showTagsLinks: boolean;
-  showPropertiesLinks: boolean;
   showImage: boolean;
   excludePaths: string[];
   initialBoxCount: number;
@@ -21,12 +20,10 @@ export interface TwohopPluginSettings {
   showTwoHopLinksInSeparatePane: boolean;
   excludeTags: string[];
   panePositionIsRight: boolean;
-  createFilesForMultiLinked: boolean;
   showFullPathInLinkCards: boolean;
   includeBodyInCardSearch: boolean;
   refreshDebounceMs: number;
   frontmatterPropertyKeyAsTitle: string;
-  frontmatterKeys: string[];
   [key: string]: boolean | string | string[] | number | undefined;
 }
 
@@ -63,18 +60,13 @@ export class TwohopSettingTab extends PluginSettingTab {
     );
     this.createToggleSetting("Show Links", "", "showForwardConnectedLinks");
     this.createToggleSetting(
-      "Show Back Links",
-      "",
+      "Include back links in Links",
+      "If true, notes that link to the current note are listed in Links after the notes it links to.",
       "showBackwardConnectedLinks"
     );
     this.createToggleSetting("Show 2Hop Links", "", "showTwohopLinks");
     this.createToggleSetting("Show New Links", "", "showNewLinks");
     this.createToggleSetting("Show Tags Links", "", "showTagsLinks");
-    this.createToggleSetting(
-      "Show Properties Links",
-      "",
-      "showPropertiesLinks"
-    );
     this.createToggleSetting("Show Image in the 2hop Links", "", "showImage");
     this.createTextAreaSetting(
       "Exclude Paths",
@@ -88,12 +80,6 @@ export class TwohopSettingTab extends PluginSettingTab {
       "excludeTags",
       "tagNameToExclude\nparent/childTagToExclude\nparentTag/forAllSubtags/"
     );
-    this.createTextAreaSetting(
-      "Frontmatter Keys",
-      "List of frontmatter keys to include, one per line. The values of these keys will be treated like tags.",
-      "frontmatterKeys",
-      "key1\nkey2\nkey3"
-    );
     this.createTextSettingNum(
       "Initial Box Count",
       "Set the initial number of boxes to be displayed.",
@@ -106,18 +92,13 @@ export class TwohopSettingTab extends PluginSettingTab {
     );
     this.createToggleSetting(
       "Enable Duplicate Removal",
-      "Enable the removal of duplicate links.",
+      "If true, the Tags section omits notes already shown in Links or 2hop links.",
       "enableDuplicateRemoval"
     );
     this.createToggleSetting(
       "Auto Load 2hop Links",
       "Automatically load 2hop links when opening a note.",
       "autoLoadTwoHopLinks"
-    );
-    this.createToggleSetting(
-      "Create Files For Multiple Linked",
-      "Create new files for links that are connected to more than one other file.",
-      "createFilesForMultiLinked"
     );
     this.createToggleSetting(
       "Show full path in link cards",

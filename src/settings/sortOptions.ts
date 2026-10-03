@@ -1,22 +1,30 @@
+// The same choices as Cosense's related-page sort menu.
 export const SORT_ORDER_OPTIONS = {
-  random: "Random",
-  filenameAsc: "File name (A to Z)",
-  filenameDesc: "File name (Z to A)",
-  modifiedDesc: "Modified time (new to old)",
-  modifiedAsc: "Modified time (old to new)",
-  createdDesc: "Created time (new to old)",
-  createdAsc: "Created time (old to new)",
-  relatedScoreDesc: "Related score",
-  relatedCosenseLike: "Related, Cosense-like",
-  pageRankDesc: "Page rank",
+  related: "Related",
+  modifiedDesc: "Modified",
+  createdDesc: "Created",
   mostLinkedDesc: "Most linked",
+  titleAsc: "Title",
 } as const;
 
 export type SortOrder = keyof typeof SORT_ORDER_OPTIONS;
+
+export const DEFAULT_SORT_ORDER: SortOrder = "related";
 
 export function isSortOrder(value: unknown): value is SortOrder {
   return (
     typeof value === "string" &&
     Object.prototype.hasOwnProperty.call(SORT_ORDER_OPTIONS, value)
   );
+}
+
+/** Maps sort orders saved by 0.43.0 and earlier to the current choices. */
+export function migrateSortOrder(value: unknown): SortOrder {
+  if (isSortOrder(value)) {
+    return value;
+  }
+  if (value === "filenameAsc") {
+    return "titleAsc";
+  }
+  return DEFAULT_SORT_ORDER;
 }

@@ -88,53 +88,42 @@ Open plugin settings.
 Expected result:
 
 The setting is labeled `Default sort order`, explains that it is used when a
-2-hop view is opened, and includes these entries:
+2-hop view is opened, and offers the same choices as Cosense's related-page
+sort menu:
 
 ```text
-Related score
-Related, Cosense-like
-Page rank
+Related
+Modified
+Created
 Most linked
+Title
 ```
 
-Existing entries remain available:
+Settings saved by 0.43.0 or earlier with another order (for example `Random`
+or `Related score`) load as `Related`; `File name (A to Z)` loads as `Title`.
 
-```text
-Random
-File name (A to Z)
-File name (Z to A)
-Modified time (new to old)
-Modified time (old to new)
-Created time (new to old)
-Created time (old to new)
-```
+## 5. Links section
 
-## 5. Related score sorting
-
-Set the toolbar sort order to `Related score`. Open `Active.md`.
-
-The active file has outgoing links to `RareA`, `RareB`, `RareC`, `CommonHub`, and `DirectTarget`.
-
-Expected qualitative order:
-
-- Cards that share multiple rare links with `Active.md` rank above cards that share only `CommonHub`.
-- `MultiSharedCandidate.md` should appear above `HubOnlyCandidate.md`.
-- Candidates sharing only `CommonHub` should not dominate merely because `CommonHub` has many backlinks.
-
-Exact order can vary with implementation details, but the following should hold:
-
-```text
-rank(MultiSharedCandidate) > rank(HubOnlyCandidate)
-rank(PageRankHigh) >= rank(PageRankLow) when related scores are otherwise similar
-```
-
-## 6. Related, Cosense-like sorting
-
-Set the toolbar sort order to `Related, Cosense-like`. Open `Active.md`.
+Set the sort order to `Related`. Open `Active.md`.
 
 Expected result:
 
-- 2-hop sections follow the outgoing link order in `Active.md`:
+- One `Links` section lists the notes `Active.md` links to, followed by notes
+  that link to `Active.md` (for example `BacklinkToActive.md`). There is no
+  separate Back Links section.
+- A note that both links and is linked comes first.
+- Among linked notes, a note with more connections to `Active.md` (links in
+  both directions, or more of `Active.md`'s links in common) comes first; ties
+  go to the most recently modified note.
+
+## 6. 2-hop groups
+
+Open `Active.md`.
+
+Expected result:
+
+- 2-hop groups follow the order of the links in `Active.md`. Groups with more
+  than 100 notes move to the end, smallest first:
 
 ```text
 RareA
@@ -144,25 +133,35 @@ CommonHub
 DirectTarget
 ```
 
-- If a candidate shares several intermediates, it is assigned to the first matching intermediate in that active-page order.
+- A note that shares several of `Active.md`'s links appears once, under the
+  first of those links. `MultiSharedCandidate.md` appears under `RareA` only.
+- Notes already in `Links` are not repeated in 2-hop groups.
+- With `Related`, a note whose first shared link comes earlier in `Active.md`
+  ranks higher within a group.
+- A link to a missing note forms a group when another note has the same
+  missing link; otherwise it appears in `New Links`.
 
-## 7. Page rank sorting
+## 7. Other sort orders
 
-Set the toolbar sort order to `Page rank`. Open `Active.md`.
-
-Expected result:
-
-- `PageRankHigh.md` should rank above `PageRankLow.md` within comparable 2-hop sections because multiple `PR_Backlink_*.md` files link to `PageRankHigh.md`.
-- The plugin should not use Google-style iterative PageRank unless it is explicitly combined with or documented as separate from the Cosense-like PageRank approximation.
-
-## 8. Most linked sorting
-
-Set the toolbar sort order to `Most linked`. Open `Active.md`.
+Switch the toolbar sort menu to `Modified`, `Created`, `Most linked`, and
+`Title`.
 
 Expected result:
 
-- Cards with more inbound links in the test vault rank above otherwise similar cards.
-- This mode is simpler than `Page rank`: it should mainly track unique backlink count/in-degree.
+- Cards inside `Links`, each 2-hop group, and Tags reorder by the chosen value.
+- The order of the 2-hop groups stays the same.
+- `Most linked` ranks notes by the number of notes linking to them, so
+  `PageRankHigh.md` ranks above `PageRankLow.md`.
+
+## 8. Editing stability
+
+Open `Active.md` and type ordinary text, without touching any link.
+
+Expected result:
+
+- The cards do not reorder or reload, and expanded `Load more` sections stay
+  expanded.
+- Adding or removing a link updates the cards once.
 
 ## 9. Card search/filter
 
@@ -202,9 +201,9 @@ Specific examples:
 
 If the line does not visibly scroll but the file opens correctly, inspect whether `eState: { line }` is being honored. If not, implement or fix the post-open `MarkdownView.editor.setCursor()` + `scrollIntoView()` fallback.
 
-## 11. Jump to link line: Back Links cards
+## 11. Jump to link line: cards for notes linking back
 
-Open `Active.md`. In the Back Links section, click `BacklinkToActive.md`.
+Open `Active.md`. In the Links section, click `BacklinkToActive.md`.
 
 Expected result:
 
@@ -246,7 +245,7 @@ Canvas checks require `Show 2hop links in separate pane`:
 
 - Open `CanvasActive.canvas`; `RareA.md`, `RareB.md`, and `DirectTarget.md`
   are treated as outgoing links and related cards render without an exception.
-- Open `Active.md`; `CanvasBacklink.canvas` appears in Back Links.
+- Open `Active.md`; `CanvasBacklink.canvas` appears in Links.
 - Open `InvalidCanvasNodes.canvas`; the plugin remains enabled and shows no
   Canvas-derived results rather than throwing an exception. This fixture covers
   a non-array `nodes` value; individual malformed nodes are skipped defensively
@@ -261,7 +260,7 @@ each Canvas node's `file` value to the vault-relative path (for example,
 
 - Forward Links still open normally.
 - New Links still ask whether to create a file.
-- Tags Links and Properties Links still render and sort using existing modes.
+- Tags Links still render and sort using the selected order.
 - Duplicate removal still suppresses duplicate cards when enabled.
 - Separate pane mode still renders the same card list.
 - Mobile/touch long-press context menu still works as before.
@@ -283,7 +282,7 @@ On a larger real vault:
   `Show performance statistics`. In a stable metadata revision, graph builds
   should remain near one while graph/result hits increase. Cancellation counts
   may increase during rapid switching and are not errors.
-- With `Show Back Links` disabled on a Markdown note, Canvas files are not read
+- With `Include back links in Links` disabled on a Markdown note, Canvas files are not read
   merely to build hidden backlinks.
 
 ## 16. Note scroll navigation

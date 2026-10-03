@@ -1,7 +1,6 @@
 export const DEFAULT_REFRESH_DEBOUNCE_MS = 200;
 export const METADATA_REFRESH_DEBOUNCE_MS = 500;
 export const STARTUP_REFRESH_DELAY_MS = 1500;
-export const GRAPH_CACHE_TTL_MS = 5 * 60 * 1000;
 export const RESULT_CACHE_TTL_MS = 5 * 60 * 1000;
 export const MAX_RESULT_CACHE_ENTRIES = 20;
 

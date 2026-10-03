@@ -10,14 +10,14 @@ import {
   getMarkdownHostSelector,
   shouldContinueMarkdownHostRetry,
 } from "../src/markdownHostReadiness.ts";
-import { GraphIndexCache } from "../src/graphIndexCache.ts";
 import {
   getLinkSignature,
   LinkSignatureTracker,
 } from "../src/linkSignature.ts";
-import { getSortFunction, getTwoHopSortFunction } from "../src/sort.ts";
+import { buildRelatedPages, LARGE_GROUP_SIZE } from "../src/cosenseRelated.ts";
+import { LinkIndex } from "../src/linkIndex.ts";
+import { migrateSortOrder } from "../src/settings/sortOptions.ts";
 import { chooseInlineRestoreLeaf } from "../src/inlineRestoreLeaf.ts";
-import { prepareGraphOrderForPath } from "../src/ranking.ts";
 import { Links } from "../src/links.ts";
 import {
   getScrollDestination,
@@ -33,6 +33,7 @@ import {
   reserveResultsHeight,
 } from "../src/ui/toolbarModel.ts";
 import {
+  createLinkedApp,
   createSettings,
   createSyntheticApp,
 } from "./support/synthetic-vault.mjs";
@@ -577,30 +578,28 @@ test("compact search overrides the native focused form surface", () => {
 });
 
 test("sort menu exposes every order and marks only the temporary current value", () => {
-  const entries = getSortMenuEntries("relatedCosenseLike");
+  const entries = getSortMenuEntries("modifiedDesc");
 
-  assert.equal(entries.length, 11);
-  assert.equal(new Set(entries.map((entry) => entry.value)).size, 11);
+  assert.deepEqual(
+    entries.map((entry) => entry.label),
+    ["Related", "Modified", "Created", "Most linked", "Title"]
+  );
   assert.deepEqual(
     entries.filter((entry) => entry.isCurrent).map((entry) => entry.value),
-    ["relatedCosenseLike"]
-  );
-  assert.equal(
-    entries.find((entry) => entry.value === "relatedCosenseLike")?.label,
-    "Related, Cosense-like"
+    ["modifiedDesc"]
   );
 });
 
 test("temporary sort indicator appears only when the current order differs from the default", () => {
   assert.equal(
-    hasTemporarySortOverride("relatedCosenseLike", "relatedCosenseLike"),
+    hasTemporarySortOverride("related", "related"),
     false
   );
   assert.equal(
-    hasTemporarySortOverride("filenameAsc", "relatedCosenseLike"),
+    hasTemporarySortOverride("titleAsc", "related"),
     true
   );
-  assert.equal(hasTemporarySortOverride("random", "filenameAsc"), true);
+  assert.equal(hasTemporarySortOverride("related", "titleAsc"), true);
 });
 
 test("search result height is captured once from a valid rendered card region", () => {
@@ -707,52 +706,7 @@ test("inline restore is limited to closing the active 2Hop pane in the same cont
   );
 });
 
-test("GraphIndex is reused and active document order is built on demand", async () => {
-  const { app, files, counters } = createSyntheticApp({
-    fileCount: 1200,
-    linksPerFile: 8,
-  });
-  const cache = new GraphIndexCache(app);
-
-  const graph = await cache.get([], false);
-  assert.equal(graph.paths.length, 1200);
-  const firstOutgoing = graph.out.get(files[0].path);
-  assert.ok(firstOutgoing && firstOutgoing.size > 0);
-  for (const targetPath of firstOutgoing) {
-    assert.ok(graph.in.get(targetPath)?.has(files[0].path));
-  }
-  assert.equal(
-    graph.pageRank.size,
-    0,
-    "Cosense-like must skip unused PageRank"
-  );
-  assert.equal(
-    counters.getFileCache,
-    0,
-    "cold graph must not inspect every note order"
-  );
-
-  prepareGraphOrderForPath(app, graph, files[0].path);
-  prepareGraphOrderForPath(app, graph, files[1].path);
-  assert.equal(counters.getFileCache, 2);
-
-  const reused = await cache.get([], false);
-  assert.equal(reused, graph);
-  assert.deepEqual(cache.getStats(), {
-    builds: 1,
-    hits: 1,
-    joinedBuilds: 0,
-    cancellations: 0,
-    lastBuildMs: cache.getStats().lastBuildMs,
-  });
-
-  const fullGraph = await cache.get([], true);
-  assert.equal(fullGraph.pageRank.size, 1200);
-  assert.equal(cache.getStats().builds, 2);
-  assert.equal(await cache.get([], false), fullGraph);
-});
-
-test("gather results and graph topology are reused across tab switches", async () => {
+test("gather results and the link index are reused across tab switches", async () => {
   const { app, files, counters } = createSyntheticApp({
     fileCount: 600,
     linksPerFile: 7,
@@ -768,19 +722,18 @@ test("gather results and graph topology are reused across tab switches", async (
   assert.equal(stats.builds, 1);
   assert.equal(stats.resultComputations, 2);
   assert.equal(stats.resultCacheHits, 1);
-  assert.ok(stats.hits >= 1);
-  assert.equal(
-    counters.vaultRead,
-    0,
-    "Markdown ranking must not read note bodies"
-  );
+  assert.equal(counters.vaultRead, 0, "ranking must not read note bodies");
   assert.equal(counters.cachedRead, 0);
   assert.equal(counters.adapterStat, 0, "existing TFile.stat must be reused");
-  assert.ok(
-    counters.getFileCache < 20,
-    `metadata order lookups must track active notes, got ${counters.getFileCache}`
-  );
 
+  links.markLinksDirty(files[3].path);
+  links.invalidateMetadataCaches();
+  await links.gatherTwoHopLinks(files[0]);
+  const afterPatch = links.getPerformanceStats();
+  assert.equal(afterPatch.builds, 1, "one changed note must not rebuild the index");
+  assert.equal(afterPatch.patches, 1);
+
+  links.markAllLinksDirty();
   links.invalidateMetadataCaches();
   await links.gatherTwoHopLinks(files[0]);
   assert.equal(links.getPerformanceStats().builds, 2);
@@ -806,33 +759,37 @@ test("hidden Canvas backlinks do not scan Canvas files", async () => {
 
 test("a newer tab cancels the superseded gather after shared I/O settles", async () => {
   const canvasContent = JSON.stringify({
-    nodes: [{ type: "file", file: "notes/note-00000.md" }],
+    nodes: [
+      { type: "file", file: "notes/note-00000.md" },
+      { type: "file", file: "notes/note-00001.md" },
+    ],
   });
   const { app, files, counters, resolveCanvasRead } = createSyntheticApp({
     fileCount: 50,
     linksPerFile: 4,
     canvasContent,
   });
-  const links = new Links(app, createSettings({ sortOrder: "filenameAsc" }));
+  const links = new Links(app, createSettings({ sortOrder: "titleAsc" }));
 
   const stale = links.gatherTwoHopLinks(files[0]);
   const latest = links.gatherTwoHopLinks(files[1]);
   resolveCanvasRead();
 
   await assert.rejects(stale, (error) => error?.name === "AbortError");
-  await latest;
+  const result = await latest;
   const stats = links.getPerformanceStats();
   assert.equal(stats.resultComputations, 2);
   assert.equal(stats.gatherCancellations, 1);
   assert.ok(stats.canvasIndexHits >= 1);
   assert.equal(stats.canvasIndexBuilds, 1);
   assert.equal(counters.vaultRead, 1);
+  assert.ok(
+    result.links.some((entity) => entity.targetPath === "boards/test.canvas"),
+    "a Canvas that contains the note is listed in Links"
+  );
 });
 
-const signatureOptions = {
-  frontmatterKeys: [],
-  frontmatterPropertyKeyAsTitle: "",
-};
+const signatureOptions = { frontmatterPropertyKeyAsTitle: "" };
 
 function metadataWithLinks(links, extra = {}) {
   return {
@@ -871,7 +828,7 @@ test("tags and title frontmatter are part of the link signature", () => {
     getLinkSignature(base, signatureOptions),
     getLinkSignature(withTag, signatureOptions)
   );
-  const titleOptions = { ...signatureOptions, frontmatterPropertyKeyAsTitle: "title" };
+  const titleOptions = { frontmatterPropertyKeyAsTitle: "title" };
   assert.notEqual(
     getLinkSignature({ ...base, frontmatter: { title: "One" } }, titleOptions),
     getLinkSignature({ ...base, frontmatter: { title: "Two" } }, titleOptions)
@@ -882,54 +839,151 @@ test("tags and title frontmatter are part of the link signature", () => {
   );
 });
 
-test("random order is the same on every refresh", () => {
-  const items = ["Alpha", "Beta", "Gamma", "Delta", "Epsilon", "Zeta"].map(
-    (linkText) => ({ entity: { linkText } })
-  );
-  const order = () =>
-    [...items].sort(getSortFunction("random")).map((it) => it.entity.linkText);
-  const first = order();
-  for (let i = 0; i < 5; i++) {
-    assert.deepEqual(order(), first);
-  }
-  const sections = items.map((it) => ({
-    twoHopLinkEntity: { link: { linkText: it.entity.linkText } },
-  }));
-  const sectionOrder = () =>
-    [...sections]
-      .sort(getTwoHopSortFunction("random"))
-      .map((it) => it.twoHopLinkEntity.link.linkText);
-  assert.deepEqual(sectionOrder(), sectionOrder());
-});
-
-test("time sorts keep a stable order when a date is missing", () => {
-  const items = ["C", "A", "B"].map((linkText) => ({
-    entity: { linkText },
-    stat: null,
-  }));
-  const sorted = () =>
-    [...items].sort(getSortFunction("modifiedDesc")).map((it) => it.entity.linkText);
-  assert.deepEqual(sorted(), ["C", "A", "B"]);
-  assert.deepEqual(sorted(), sorted());
-});
-
-test("random order results are cached like the other orders", async () => {
-  const { app, files } = createSyntheticApp({ fileCount: 80, linksPerFile: 4 });
-  const links = new Links(app, createSettings({ sortOrder: "random" }));
-  const first = await links.gatherTwoHopLinks(files[0]);
-  const again = await links.gatherTwoHopLinks(files[0]);
-  assert.equal(again, first);
-  assert.equal(links.getPerformanceStats().resultCacheHits, 1);
-});
-
 test("an unrelated metadata change does not cancel the gather in progress", async () => {
   const { app, files } = createSyntheticApp({ fileCount: 300, linksPerFile: 6 });
   const links = new Links(app, createSettings());
   const pending = links.gatherTwoHopLinks(files[0]);
   links.invalidateMetadataCaches(false);
   const result = await pending;
-  assert.ok(result.forwardLinks.length > 0);
+  assert.ok(result.links.length > 0);
   assert.equal(links.getPerformanceStats().gatherCancellations, 0);
   await links.gatherTwoHopLinks(files[0]);
   assert.equal(links.getPerformanceStats().resultComputations, 2);
+});
+
+function cosenseVault() {
+  return createLinkedApp({
+    A: {
+      links: ["B", "C", "Missing", "Lonely", "GPT-3.5", "photo.png"],
+      tags: ["topic/sub"],
+    },
+    B: { links: [], mtime: 1_700_000_000_000 },
+    C: { links: ["A"], mtime: 1_700_000_000_000 },
+    D: { links: ["C", "B"], mtime: 1_700_000_900_000 },
+    E: { links: ["C"], mtime: 1_700_000_100_000 },
+    F: { links: ["A", "B"], mtime: 1_700_000_000_000 },
+    G: { links: ["Missing"], mtime: 1_700_000_000_000 },
+    H: { links: ["B"], mtime: 1_700_000_000_000 },
+    T: { links: [], tags: ["topic"], mtime: 1_700_000_000_000 },
+  });
+}
+
+const titlesOf = (entities) =>
+  entities.map((entity) =>
+    (entity.targetPath ?? entity.linkText).replace(/\.md$/, "")
+  );
+
+test("Links lists linked notes first, then notes linking back", async () => {
+  const { app, files } = cosenseVault();
+  const links = new Links(app, createSettings({ showTagsLinks: true }));
+  const result = await links.gatherTwoHopLinks(files.get("A.md"));
+
+  // C links both ways, B is only linked to, F only links back.
+  assert.deepEqual(titlesOf(result.links), ["C", "B", "F"]);
+  const backlink = result.links.find((entity) => entity.targetPath === "F.md");
+  assert.equal(backlink.linkTextToReveal, "A.md", "opens F at its link to A");
+});
+
+test("2-hop groups follow the note's link order and show each note once", async () => {
+  const { app, files } = cosenseVault();
+  const links = new Links(app, createSettings({ showTagsLinks: true }));
+  const result = await links.gatherTwoHopLinks(files.get("A.md"));
+  const groups = result.twoHopLinks.map((group) => ({
+    headword: group.link.targetPath ?? group.link.linkText,
+    pages: titlesOf(group.fileEntities),
+  }));
+
+  // D shares both B and C but appears only under B, the earlier link. H ranks
+  // above D because its shared link (B) comes earlier in A. F and C are in
+  // Links and therefore not repeated.
+  assert.deepEqual(groups, [
+    { headword: "B.md", pages: ["H", "D"] },
+    { headword: "C.md", pages: ["E"] },
+    { headword: "Missing", pages: ["G"] },
+  ]);
+  const card = result.twoHopLinks[0].fileEntities[0];
+  assert.equal(card.linkTextToReveal, "B.md", "opens H at its link to B");
+  assert.deepEqual(
+    titlesOf(result.newLinks),
+    ["Lonely", "GPT-3.5"],
+    "names with a period are notes; attachments are not links"
+  );
+});
+
+test("other sort orders reorder within sections but keep group order", async () => {
+  const { app, files } = cosenseVault();
+  const links = new Links(app, createSettings({ sortOrder: "modifiedDesc" }));
+  const result = await links.gatherTwoHopLinks(files.get("A.md"));
+  assert.deepEqual(titlesOf(result.twoHopLinks[0].fileEntities), ["D", "H"]);
+  assert.deepEqual(
+    result.twoHopLinks.map((group) => group.link.targetPath ?? group.link.linkText),
+    ["B.md", "C.md", "Missing"]
+  );
+});
+
+test("the Tags section lists notes sharing a tag that are not shown elsewhere", async () => {
+  const { app, files } = cosenseVault();
+  const links = new Links(app, createSettings({ showTagsLinks: true }));
+  const result = await links.gatherTwoHopLinks(files.get("A.md"));
+  assert.deepEqual(
+    result.tagLinksList.map((list) => [list.property, titlesOf(list.fileEntities)]),
+    [["topic", ["T"]]]
+  );
+});
+
+test("groups larger than the limit move to the end, smallest first", () => {
+  const sources = new Map([
+    ["p:Hub.md", Array.from({ length: LARGE_GROUP_SIZE + 5 }, (_, i) => `n${i}.md`)],
+    ["p:Big.md", Array.from({ length: LARGE_GROUP_SIZE + 1 }, (_, i) => `m${i}.md`)],
+    ["p:Small.md", ["s1.md", "s2.md"]],
+  ]);
+  const result = buildRelatedPages({
+    activePath: "A.md",
+    headwords: ["Hub", "Big", "Small"].map((name) => ({
+      key: `p:${name}.md`,
+      linkText: name,
+      path: `${name}.md`,
+    })),
+    linkTo: ["Hub.md", "Big.md", "Small.md"],
+    linkFrom: [],
+    sourcesOf: (key) => sources.get(key) ?? [],
+    orderedKeysOf: () => [],
+    infoOf: (path) => ({ title: path, mtime: 0, ctime: 0, linked: 0 }),
+    isExcluded: () => false,
+    sortOrder: "related",
+  });
+  assert.deepEqual(
+    result.groups.map((group) => group.headword.linkText),
+    ["Small", "Big", "Hub"]
+  );
+});
+
+test("the link index updates only the note that changed", () => {
+  const { app, files, notes, rebuild } = cosenseVault();
+  const index = new LinkIndex(app);
+  assert.deepEqual(
+    Array.from(index.sourcesOf("p:C.md")).sort(),
+    ["A.md", "D.md", "E.md"]
+  );
+  assert.equal(index.linkedCount("B.md"), 4);
+
+  notes.E.links = ["B"];
+  rebuild();
+  index.markDirty("E.md");
+  assert.deepEqual(Array.from(index.sourcesOf("p:C.md")).sort(), ["A.md", "D.md"]);
+  assert.ok(index.sourcesOf("p:B.md").has("E.md"));
+  assert.ok(index.sourcesOf("u:missing").has("G.md"));
+  assert.deepEqual(index.orderedKeysOf(files.get("D.md")), ["p:C.md", "p:B.md"]);
+  assert.equal(index.getStats().builds, 1);
+  assert.equal(index.getStats().patches, 1);
+});
+
+test("saved sort orders from earlier versions map to the new choices", () => {
+  assert.equal(migrateSortOrder("random"), "related");
+  assert.equal(migrateSortOrder("relatedScoreDesc"), "related");
+  assert.equal(migrateSortOrder("pageRankDesc"), "related");
+  assert.equal(migrateSortOrder("filenameAsc"), "titleAsc");
+  assert.equal(migrateSortOrder("modifiedDesc"), "modifiedDesc");
+  assert.equal(migrateSortOrder("mostLinkedDesc"), "mostLinkedDesc");
+  assert.equal(migrateSortOrder(undefined), "related");
 });

@@ -30,22 +30,18 @@ import {
 } from "./toolbarModel";
 
 interface TwohopLinksRootViewProps {
-  forwardConnectedLinks: FileEntity[];
+  links: FileEntity[];
   newLinks: FileEntity[];
-  backwardConnectedLinks: FileEntity[];
   twoHopLinks: TwohopLink[];
   tagLinksList: PropertiesLinks[];
-  frontmatterKeyLinksList: PropertiesLinks[];
   onClick: (fileEntity: FileEntity, newLeaf?: OpenPaneTarget) => Promise<void>;
   getPreview: (fileEntity: FileEntity) => Promise<string>;
   getTitle: (fileEntity: FileEntity) => Promise<string>;
   app: App;
-  showForwardConnectedLinks: boolean;
-  showBackwardConnectedLinks: boolean;
+  showLinks: boolean;
   showTwohopLinks: boolean;
   showNewLinks: boolean;
   showTagsLinks: boolean;
-  showPropertiesLinks: boolean;
   autoLoadTwoHopLinks: boolean;
   includeBodyInCardSearch: boolean;
   sourcePath: string;
@@ -57,12 +53,10 @@ interface TwohopLinksRootViewProps {
 }
 
 type Category =
-  | "forwardConnectedLinks"
-  | "backwardConnectedLinks"
+  | "links"
   | "twoHopLinks"
   | "newLinks"
-  | "tagLinksList"
-  | "frontmatterKeyLinksList";
+  | "tagLinksList";
 
 interface TwohopLinksRootViewState {
   displayedBoxCount: Record<Category, number>;
@@ -84,12 +78,10 @@ export default class TwohopLinksRootView extends React.Component<
   TwohopLinksRootViewState
 > {
   loadMoreRefs: Record<Category, React.RefObject<HTMLButtonElement>> = {
-    forwardConnectedLinks: createRef(),
+    links: createRef(),
     newLinks: createRef(),
-    backwardConnectedLinks: createRef(),
     twoHopLinks: createRef(),
     tagLinksList: createRef(),
-    frontmatterKeyLinksList: createRef(),
   };
   private searchDebounceTimer: number | null = null;
   private searchGeneration = 0;
@@ -107,20 +99,16 @@ export default class TwohopLinksRootView extends React.Component<
     super(props);
     this.state = {
       displayedBoxCount: {
-        forwardConnectedLinks: props.initialBoxCount,
+        links: props.initialBoxCount,
         newLinks: props.initialBoxCount,
-        backwardConnectedLinks: props.initialBoxCount,
         twoHopLinks: props.initialBoxCount,
         tagLinksList: props.initialBoxCount,
-        frontmatterKeyLinksList: props.initialBoxCount,
       },
       displayedSectionCount: {
-        forwardConnectedLinks: props.initialSectionCount,
+        links: props.initialSectionCount,
         newLinks: props.initialSectionCount,
-        backwardConnectedLinks: props.initialSectionCount,
         twoHopLinks: props.initialSectionCount,
         tagLinksList: props.initialSectionCount,
-        frontmatterKeyLinksList: props.initialSectionCount,
       },
       prevProps: null,
       isLoaded: props.autoLoadTwoHopLinks,
@@ -137,23 +125,19 @@ export default class TwohopLinksRootView extends React.Component<
 
   private initialDisplayedBoxCount(): Record<Category, number> {
     return {
-      forwardConnectedLinks: this.props.initialBoxCount,
+      links: this.props.initialBoxCount,
       newLinks: this.props.initialBoxCount,
-      backwardConnectedLinks: this.props.initialBoxCount,
       twoHopLinks: this.props.initialBoxCount,
       tagLinksList: this.props.initialBoxCount,
-      frontmatterKeyLinksList: this.props.initialBoxCount,
     };
   }
 
   private initialDisplayedSectionCount(): Record<Category, number> {
     return {
-      forwardConnectedLinks: this.props.initialSectionCount,
+      links: this.props.initialSectionCount,
       newLinks: this.props.initialSectionCount,
-      backwardConnectedLinks: this.props.initialSectionCount,
       twoHopLinks: this.props.initialSectionCount,
       tagLinksList: this.props.initialSectionCount,
-      frontmatterKeyLinksList: this.props.initialSectionCount,
     };
   }
 
@@ -307,18 +291,14 @@ export default class TwohopLinksRootView extends React.Component<
       await populateBodySearchTexts(
         this.props.app,
         collectVisibleCardSearchEntities({
-          showForwardConnectedLinks: this.props.showForwardConnectedLinks,
-          showBackwardConnectedLinks: this.props.showBackwardConnectedLinks,
+          showLinks: this.props.showLinks,
           showTwohopLinks: this.props.showTwohopLinks,
           showNewLinks: this.props.showNewLinks,
           showTagsLinks: this.props.showTagsLinks,
-          showPropertiesLinks: this.props.showPropertiesLinks,
-          forwardLinks: this.props.forwardConnectedLinks,
+          links: this.props.links,
           newLinks: this.props.newLinks,
-          backwardLinks: this.props.backwardConnectedLinks,
           twoHopLinks: this.props.twoHopLinks,
           tagLinksList: this.props.tagLinksList,
-          frontmatterKeyLinksList: this.props.frontmatterKeyLinksList,
         })
       );
 
@@ -444,12 +424,10 @@ export default class TwohopLinksRootView extends React.Component<
 
   render(): JSX.Element {
     const {
-      showForwardConnectedLinks,
-      showBackwardConnectedLinks,
+      showLinks,
       showTwohopLinks,
       showNewLinks,
       showTagsLinks,
-      showPropertiesLinks,
       autoLoadTwoHopLinks,
     } = this.props;
     const { isLoaded } = this.state;
@@ -459,18 +437,10 @@ export default class TwohopLinksRootView extends React.Component<
       this.props.sortOrder,
       this.props.defaultSortOrder
     );
-    const filteredForwardConnectedLinks = showForwardConnectedLinks
+    const filteredLinks = showLinks
       ? filterFileEntities(
           this.props.app,
-          this.props.forwardConnectedLinks,
-          this.state.searchQuery,
-          includeBody
-        )
-      : [];
-    const filteredBackwardConnectedLinks = showBackwardConnectedLinks
-      ? filterFileEntities(
-          this.props.app,
-          this.props.backwardConnectedLinks,
+          this.props.links,
           this.state.searchQuery,
           includeBody
         )
@@ -495,14 +465,6 @@ export default class TwohopLinksRootView extends React.Component<
       ? filterPropertiesLinks(
           this.props.app,
           this.props.tagLinksList,
-          this.state.searchQuery,
-          includeBody
-        )
-      : [];
-    const filteredFrontmatterKeyLinksList = showPropertiesLinks
-      ? filterPropertiesLinks(
-          this.props.app,
-          this.props.frontmatterKeyLinksList,
           this.state.searchQuery,
           includeBody
         )
@@ -611,33 +573,16 @@ export default class TwohopLinksRootView extends React.Component<
               : { minHeight: `${this.state.reservedResultsHeight}px` }
           }
         >
-          {showForwardConnectedLinks && (
+          {showLinks && (
             <ConnectedLinksView
-              fileEntities={filteredForwardConnectedLinks}
-              displayedBoxCount={
-                this.state.displayedBoxCount.forwardConnectedLinks
-              }
+              fileEntities={filteredLinks}
+              displayedBoxCount={this.state.displayedBoxCount.links}
               onClick={this.props.onClick}
               getPreview={this.props.getPreview}
               getTitle={this.props.getTitle}
-              onLoadMore={() => this.loadMoreBox("forwardConnectedLinks")}
+              onLoadMore={() => this.loadMoreBox("links")}
               title={"Links"}
               className={"twohop-links-forward-links"}
-              app={this.props.app}
-            />
-          )}
-          {showBackwardConnectedLinks && (
-            <ConnectedLinksView
-              fileEntities={filteredBackwardConnectedLinks}
-              displayedBoxCount={
-                this.state.displayedBoxCount.backwardConnectedLinks
-              }
-              onClick={this.props.onClick}
-              getPreview={this.props.getPreview}
-              getTitle={this.props.getTitle}
-              onLoadMore={() => this.loadMoreBox("backwardConnectedLinks")}
-              title={"Back Links"}
-              className={"twohop-links-back-links"}
               app={this.props.app}
             />
           )}
@@ -696,30 +641,6 @@ export default class TwohopLinksRootView extends React.Component<
               ref={this.loadMoreRefs.tagLinksList}
               className="load-more-button"
               onClick={() => this.loadMoreSections("tagLinksList")}
-            >
-              Load more
-            </button>
-          )}
-          {showPropertiesLinks && (
-            <PropertiesLinksListView
-              propertiesLinksList={filteredFrontmatterKeyLinksList}
-              onClick={this.props.onClick}
-              getPreview={this.props.getPreview}
-              getTitle={this.props.getTitle}
-              app={this.props.app}
-              displayedSectionCount={
-                this.state.displayedSectionCount.frontmatterKeyLinksList
-              }
-              initialDisplayedEntitiesCount={this.props.initialBoxCount}
-              resetCounter={this.state.resetCounter}
-            />
-          )}
-          {this.state.displayedSectionCount.frontmatterKeyLinksList <
-            filteredFrontmatterKeyLinksList.length && (
-            <button
-              ref={this.loadMoreRefs.frontmatterKeyLinksList}
-              className="load-more-button"
-              onClick={() => this.loadMoreSections("frontmatterKeyLinksList")}
             >
               Load more
             </button>

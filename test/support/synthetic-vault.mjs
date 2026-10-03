@@ -117,22 +117,85 @@ export function createSettings(overrides = {}) {
     showTwohopLinks: true,
     showNewLinks: true,
     showTagsLinks: false,
-    showPropertiesLinks: false,
     showImage: false,
     excludePaths: [],
     initialBoxCount: 10,
     initialSectionCount: 20,
     enableDuplicateRemoval: true,
-    sortOrder: "relatedCosenseLike",
+    sortOrder: "related",
     showTwoHopLinksInSeparatePane: false,
     excludeTags: [],
     panePositionIsRight: false,
-    createFilesForMultiLinked: false,
     showFullPathInLinkCards: false,
     includeBodyInCardSearch: false,
     refreshDebounceMs: 200,
     frontmatterPropertyKeyAsTitle: "",
-    frontmatterKeys: [],
     ...overrides,
   };
+}
+
+/**
+ * A small vault described note by note: { "A": { links: ["B", "Missing"],
+ * mtime, tags: ["topic"] } }. Links resolve by note name; unknown names stay
+ * unresolved, like Obsidian.
+ */
+export function createLinkedApp(notes) {
+  const files = new Map();
+  for (const [name, note] of Object.entries(notes)) {
+    files.set(
+      `${name}.md`,
+      new TFile(`${name}.md`, {
+        mtime: note.mtime ?? 1_700_000_000_000,
+        ctime: note.ctime ?? note.mtime ?? 1_600_000_000_000,
+      })
+    );
+  }
+  const resolve = (linkText) => files.get(`${linkText.replace(/#.*$/, "")}.md`) ?? null;
+  const resolvedLinks = {};
+  const unresolvedLinks = {};
+  const caches = new Map();
+  const rebuild = () => {
+    for (const key of Object.keys(resolvedLinks)) delete resolvedLinks[key];
+    for (const key of Object.keys(unresolvedLinks)) delete unresolvedLinks[key];
+    for (const [name, note] of Object.entries(notes)) {
+      const path = `${name}.md`;
+      const links = (note.links ?? []).map((link, index) => ({
+        link,
+        position: { start: { offset: index * 10, line: index } },
+      }));
+      caches.set(path, {
+        links,
+        tags: (note.tags ?? []).map((tag, index) => ({
+          tag: `#${tag}`,
+          position: { start: { offset: 1000 + index } },
+        })),
+        frontmatter: {},
+      });
+      resolvedLinks[path] = {};
+      unresolvedLinks[path] = {};
+      for (const { link } of links) {
+        const target = resolve(link);
+        if (target) resolvedLinks[path][target.path] = 1;
+        else unresolvedLinks[path][link] = 1;
+      }
+    }
+  };
+  rebuild();
+
+  const app = {
+    vault: {
+      getMarkdownFiles: () => Array.from(files.values()),
+      getFiles: () => Array.from(files.values()),
+      getAbstractFileByPath: (path) => files.get(path) ?? null,
+      read: async () => '{"nodes":[]}',
+      cachedRead: async () => "",
+    },
+    metadataCache: {
+      resolvedLinks,
+      unresolvedLinks,
+      getFileCache: (file) => caches.get(file.path) ?? null,
+      getFirstLinkpathDest: (linkText) => resolve(linkText),
+    },
+  };
+  return { app, files, notes, rebuild };
 }

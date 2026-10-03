@@ -61,7 +61,6 @@ export default class TwohopLinksPlugin extends Plugin {
   links: Links;
 
   private readonly linkSignatures = new LinkSignatureTracker(() => ({
-    frontmatterKeys: this.settings.frontmatterKeys,
     frontmatterPropertyKeyAsTitle: this.settings.frontmatterPropertyKeyAsTitle,
   }));
   private dataRevision = 0;
@@ -126,8 +125,14 @@ export default class TwohopLinksPlugin extends Plugin {
       })
     );
     this.registerEvent(
+      this.app.metadataCache.on("resolve", (file) => {
+        this.links.markLinksDirty(file.path);
+      })
+    );
+    this.registerEvent(
       this.app.metadataCache.on("deleted", (file) => {
         this.linkSignatures.delete(file.path);
+        this.links.markAllLinksDirty();
         this.links.invalidateMetadataCaches();
         this.markDisplayedDataStale();
       })
@@ -233,20 +238,31 @@ export default class TwohopLinksPlugin extends Plugin {
   }
 
   private registerVaultInvalidationEvents(): void {
-    // Markdown creation and deletion arrive through metadataCache events.
-    const onCanvasChanged = (file: unknown) => {
+    // Markdown creation and deletion arrive through metadataCache events, but
+    // a new or removed note can change how other notes' links resolve.
+    const onFileChanged = (file: unknown) => {
+      if (file instanceof TFile && file.extension === "md") {
+        this.links.markAllLinksDirty();
+      }
       if (file instanceof TFile && file.extension === "canvas") {
         this.links.invalidateCanvasCaches();
         this.dataRevision++;
         this.scheduleRefresh(false, METADATA_REFRESH_DEBOUNCE_MS);
       }
     };
-    this.registerEvent(this.app.vault.on("create", onCanvasChanged));
-    this.registerEvent(this.app.vault.on("delete", onCanvasChanged));
-    this.registerEvent(this.app.vault.on("modify", onCanvasChanged));
+    this.registerEvent(this.app.vault.on("create", onFileChanged));
+    this.registerEvent(this.app.vault.on("delete", onFileChanged));
+    this.registerEvent(
+      this.app.vault.on("modify", (file) => {
+        if (file instanceof TFile && file.extension === "canvas") {
+          onFileChanged(file);
+        }
+      })
+    );
     this.registerEvent(
       this.app.vault.on("rename", (_file, oldPath) => {
         this.linkSignatures.delete(oldPath);
+        this.links.markAllLinksDirty();
         this.links.invalidateMetadataCaches();
         this.links.invalidateCanvasCaches();
         this.dataRevision++;
@@ -320,17 +336,14 @@ export default class TwohopLinksPlugin extends Plugin {
         }
       }
     };
-    result.forwardLinks.forEach(add);
-    result.backwardLinks.forEach(add);
+    result.links.forEach(add);
     result.newLinks.forEach(add);
     for (const twoHopLink of result.twoHopLinks) {
       add(twoHopLink.link);
       twoHopLink.fileEntities.forEach(add);
     }
-    for (const list of [result.tagLinksList, result.frontmatterKeyLinksList]) {
-      for (const propertiesLinks of list) {
-        propertiesLinks.fileEntities.forEach(add);
-      }
+    for (const propertiesLinks of result.tagLinksList) {
+      propertiesLinks.fileEntities.forEach(add);
     }
     this.displayedPaths = paths;
     this.displayedLinkTexts = linkTexts;
@@ -380,11 +393,11 @@ export default class TwohopLinksPlugin extends Plugin {
   private showPerformanceStatistics(): void {
     const stats = this.links.getPerformanceStats();
     const message =
-      `Graph builds ${stats.builds}, graph hits ${stats.hits}, ` +
+      `Link index builds ${stats.builds}, updated notes ${stats.patches}, ` +
       `result calculations ${stats.resultComputations}, result hits ${stats.resultCacheHits}, ` +
       `joined ${stats.joinedComputations}, cancelled ${
-        stats.gatherCancellations + stats.cancellations
-      }, last graph ${stats.lastBuildMs} ms, last result ${
+        stats.gatherCancellations
+      }, last index build ${stats.lastBuildMs} ms, last result ${
         stats.lastGatherMs
       } ms`;
     console.info("2Hop Links performance statistics", stats);
@@ -868,22 +881,18 @@ export default class TwohopLinksPlugin extends Plugin {
   ): void {
     ReactDOM.render(
       <TwohopLinksRootView
-        forwardConnectedLinks={gatheredLinks.forwardLinks}
+        links={gatheredLinks.links}
         newLinks={gatheredLinks.newLinks}
-        backwardConnectedLinks={gatheredLinks.backwardLinks}
         twoHopLinks={gatheredLinks.twoHopLinks}
         tagLinksList={gatheredLinks.tagLinksList}
-        frontmatterKeyLinksList={gatheredLinks.frontmatterKeyLinksList}
         onClick={this.handleOpenFile}
         getPreview={this.handleGetPreview}
         getTitle={this.handleGetTitle}
         app={this.app}
-        showForwardConnectedLinks={this.settings.showForwardConnectedLinks}
-        showBackwardConnectedLinks={this.settings.showBackwardConnectedLinks}
+        showLinks={this.settings.showForwardConnectedLinks}
         showTwohopLinks={this.settings.showTwohopLinks}
         showNewLinks={this.settings.showNewLinks}
         showTagsLinks={this.settings.showTagsLinks}
-        showPropertiesLinks={this.settings.showPropertiesLinks}
         autoLoadTwoHopLinks={this.settings.autoLoadTwoHopLinks}
         includeBodyInCardSearch={this.settings.includeBodyInCardSearch}
         sourcePath={sourceFile.path}

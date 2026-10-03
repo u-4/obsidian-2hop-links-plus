@@ -5,11 +5,6 @@ export class FileEntity {
   public linkText: string;
   public targetPath?: string;
   public targetPathToReveal?: string;
-  public relatedScore?: number;
-  public pageRank?: number;
-  public inDegree?: number;
-  public sharedLinks?: string[];
-  public activeLinkOrder?: number;
   public searchText?: string;
   /**
    * Link that should be revealed in the file opened by this entity.

@@ -19,44 +19,33 @@ interface BodySearchCacheEntry {
 const bodySearchTextCache = new Map<string, BodySearchCacheEntry>();
 
 interface VisibleCardSearchEntityParams {
-  showForwardConnectedLinks: boolean;
-  showBackwardConnectedLinks: boolean;
+  showLinks: boolean;
   showTwohopLinks: boolean;
   showNewLinks: boolean;
   showTagsLinks: boolean;
-  showPropertiesLinks: boolean;
-  forwardLinks: FileEntity[];
+  links: FileEntity[];
   newLinks: FileEntity[];
-  backwardLinks: FileEntity[];
   twoHopLinks: TwohopLink[];
   tagLinksList: PropertiesLinks[];
-  frontmatterKeyLinksList: PropertiesLinks[];
 }
 
 export function collectVisibleCardSearchEntities({
-  showForwardConnectedLinks,
-  showBackwardConnectedLinks,
+  showLinks,
   showTwohopLinks,
   showNewLinks,
   showTagsLinks,
-  showPropertiesLinks,
-  forwardLinks,
+  links,
   newLinks,
-  backwardLinks,
   twoHopLinks,
   tagLinksList,
-  frontmatterKeyLinksList,
 }: VisibleCardSearchEntityParams): FileEntity[] {
   const entities: FileEntity[] = [];
 
-  if (showForwardConnectedLinks) {
-    entities.push(...forwardLinks);
+  if (showLinks) {
+    entities.push(...links);
   }
   if (showNewLinks) {
     entities.push(...newLinks);
-  }
-  if (showBackwardConnectedLinks) {
-    entities.push(...backwardLinks);
   }
   if (showTwohopLinks) {
     for (const twoHopLink of twoHopLinks) {
@@ -65,11 +54,6 @@ export function collectVisibleCardSearchEntities({
   }
   if (showTagsLinks) {
     for (const propertiesLinks of tagLinksList) {
-      entities.push(...propertiesLinks.fileEntities);
-    }
-  }
-  if (showPropertiesLinks) {
-    for (const propertiesLinks of frontmatterKeyLinksList) {
       entities.push(...propertiesLinks.fileEntities);
     }
   }

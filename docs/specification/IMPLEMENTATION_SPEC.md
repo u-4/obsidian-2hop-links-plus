@@ -1,3 +1,7 @@
+> Superseded in 0.44.0. This document describes the related-score and
+> PageRank-style ranking used up to 0.43.0, which was replaced by Cosense's
+> related-page order. See `COSENSE_RESEARCH_NOTES.md`.
+
 # Implementation specification
 
 ## 1. Current plugin structure

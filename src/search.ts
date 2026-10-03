@@ -49,12 +49,7 @@ export function filterTwoHopLinks(
         matchesTokens(buildCardSearchText(app, entity, includeBody), tokens)
       );
 
-      return new TwohopLink(link.link, fileEntities, {
-        relatedScore: link.relatedScore,
-        pageRank: link.pageRank,
-        inDegree: link.inDegree,
-        activeLinkOrder: link.activeLinkOrder,
-      });
+      return new TwohopLink(link.link, fileEntities);
     })
     .filter((link) => link.fileEntities.length > 0);
 }
@@ -111,7 +106,6 @@ export function buildFileEntitySearchText(
     entity.linkTextToReveal,
     entity.targetPathToReveal,
     includeBody ? entity.searchText : "",
-    ...(entity.sharedLinks ?? []),
   ];
 
   if (file) {
