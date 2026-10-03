@@ -4,14 +4,11 @@ import {
   Plugin,
   TFile,
   WorkspaceLeaf,
-  parseFrontMatterTags,
 } from "obsidian";
 import React from "react";
 import ReactDOM from "react-dom";
 import { FileEntity } from "./model/FileEntity";
-import { TwohopLink } from "./model/TwohopLink";
 import TwohopLinksRootView from "./ui/TwohopLinksRootView";
-import { PropertiesLinks } from "./model/PropertiesLinks";
 import { removeBlockReference } from "./utils";
 import {
   TwohopPluginSettings,
@@ -46,6 +43,8 @@ import {
   shouldContinueMarkdownHostRetry,
 } from "./markdownHostReadiness";
 import { chooseInlineRestoreLeaf } from "./inlineRestoreLeaf";
+import { LinkSignatureTracker } from "./linkSignature";
+import type { CachedMetadata } from "obsidian";
 
 const CONTAINER_CLASS = "twohop-links-container";
 const INLINE_CONTAINER_CLASS = "twohop-links-container--inline";
@@ -53,6 +52,7 @@ const RELATED_REGION_CLASS = "is-document-related-region";
 const HOST_RELATED_REGION_CLASS = "has-twohop-document-related-region";
 // Covers roughly one to two seconds on common 60-120 Hz displays.
 const MARKDOWN_HOST_RETRY_FRAMES = 120;
+const MODE_SWITCH_CHECK_DELAY_MS = 50;
 export const HOVER_LINK_ID = "2hop-links";
 
 export default class TwohopLinksPlugin extends Plugin {
@@ -60,8 +60,20 @@ export default class TwohopLinksPlugin extends Plugin {
   showLinksInMarkdown: boolean;
   links: Links;
 
-  private previousLinks: string[] = [];
-  private previousTags: string[] = [];
+  private readonly linkSignatures = new LinkSignatureTracker(() => ({
+    frontmatterKeys: this.settings.frontmatterKeys,
+    frontmatterPropertyKeyAsTitle: this.settings.frontmatterPropertyKeyAsTitle,
+  }));
+  private dataRevision = 0;
+  private hasPendingMetadataRefresh = false;
+  private lastGather: { key: string; result: GatheredLinks } | null = null;
+  private displayedPaths = new Set<string>();
+  private displayedLinkTexts = new Set<string>();
+  private readonly handleOpenFile = this.openFile.bind(this);
+  private readonly handleGetPreview = readPreview.bind(this);
+  private readonly handleGetTitle = getTitle.bind(this);
+  private readonly handleSortOrderChange =
+    this.setTemporarySortOrder.bind(this);
   private renderGeneration = 0;
   private temporarySortOrder: SortOrder | null = null;
   private temporarySortOrderPath: string | null = null;
@@ -99,20 +111,34 @@ export default class TwohopLinksPlugin extends Plugin {
       "TwoHopLinksView",
       (leaf: WorkspaceLeaf) => new SeparatePaneView(leaf, this, this.links)
     );
+    // Recompute only when a note's links, tags or used frontmatter changed,
+    // and refresh the view only when that note relates to what is shown.
     this.registerEvent(
-      this.app.metadataCache.on("changed", () => {
-        this.links.invalidateMetadataCaches();
+      this.app.metadataCache.on("changed", (file, _data, cache) => {
+        if (!this.linkSignatures.update(file.path, cache)) {
+          return;
+        }
+        const isRelevant = this.isRelevantMetadataChange(file, cache);
+        this.links.invalidateMetadataCaches(isRelevant);
+        if (isRelevant) {
+          this.markDisplayedDataStale();
+        }
       })
     );
     this.registerEvent(
-      this.app.metadataCache.on("deleted", () => {
+      this.app.metadataCache.on("deleted", (file) => {
+        this.linkSignatures.delete(file.path);
         this.links.invalidateMetadataCaches();
+        this.markDisplayedDataStale();
       })
     );
     this.registerEvent(
       this.app.metadataCache.on("resolved", () => {
-        this.links.invalidateMetadataCaches();
-        this.scheduleRefresh(true, METADATA_REFRESH_DEBOUNCE_MS);
+        if (!this.hasPendingMetadataRefresh) {
+          return;
+        }
+        this.hasPendingMetadataRefresh = false;
+        this.scheduleRefresh(false, METADATA_REFRESH_DEBOUNCE_MS);
       })
     );
     this.registerEvent(
@@ -125,6 +151,14 @@ export default class TwohopLinksPlugin extends Plugin {
       this.app.workspace.on("layout-change", () => {
         this.scrollNavigator.cancelPending();
         this.scrollNavigator.prune();
+        // Results are rendered only into the current mode's host, so a mode
+        // switch needs a render; it reuses the last gathered result.
+        // The new mode's host may not be in place yet when the event fires.
+        window.setTimeout(() => {
+          if (this.isCurrentModeHostMissingResults()) {
+            this.scheduleRefresh(false, 0);
+          }
+        }, MODE_SWITCH_CHECK_DELAY_MS);
       })
     );
     this.registerEvent(
@@ -199,43 +233,134 @@ export default class TwohopLinksPlugin extends Plugin {
   }
 
   private registerVaultInvalidationEvents(): void {
+    // Markdown creation and deletion arrive through metadataCache events.
+    const onCanvasChanged = (file: unknown) => {
+      if (file instanceof TFile && file.extension === "canvas") {
+        this.links.invalidateCanvasCaches();
+        this.dataRevision++;
+        this.scheduleRefresh(false, METADATA_REFRESH_DEBOUNCE_MS);
+      }
+    };
+    this.registerEvent(this.app.vault.on("create", onCanvasChanged));
+    this.registerEvent(this.app.vault.on("delete", onCanvasChanged));
+    this.registerEvent(this.app.vault.on("modify", onCanvasChanged));
     this.registerEvent(
-      this.app.vault.on("create", (file) => {
-        if (file instanceof TFile && file.extension === "canvas") {
-          this.links.invalidateCanvasCaches();
-          this.scheduleRefresh(true, METADATA_REFRESH_DEBOUNCE_MS);
-        } else {
-          this.links.invalidateMetadataCaches();
-        }
-      })
-    );
-    this.registerEvent(
-      this.app.vault.on("delete", (file) => {
-        if (file instanceof TFile && file.extension === "canvas") {
-          this.links.invalidateCanvasCaches();
-          this.scheduleRefresh(true, METADATA_REFRESH_DEBOUNCE_MS);
-        } else {
-          this.links.invalidateMetadataCaches();
-        }
-      })
-    );
-    this.registerEvent(
-      this.app.vault.on("rename", (file) => {
+      this.app.vault.on("rename", (_file, oldPath) => {
+        this.linkSignatures.delete(oldPath);
         this.links.invalidateMetadataCaches();
         this.links.invalidateCanvasCaches();
-        if (file instanceof TFile && file.extension === "canvas") {
-          this.scheduleRefresh(true, METADATA_REFRESH_DEBOUNCE_MS);
-        }
+        this.dataRevision++;
+        this.scheduleRefresh(false, METADATA_REFRESH_DEBOUNCE_MS);
       })
     );
-    this.registerEvent(
-      this.app.vault.on("modify", (file) => {
-        if (file instanceof TFile && file.extension === "canvas") {
-          this.links.invalidateCanvasCaches();
-          this.scheduleRefresh(true, METADATA_REFRESH_DEBOUNCE_MS);
+  }
+
+  private markDisplayedDataStale(): void {
+    this.dataRevision++;
+    this.hasPendingMetadataRefresh = true;
+  }
+
+  /**
+   * A changed note matters when it is the active note, is shown in the view,
+   * or now links to the active note or one of the active note's links.
+   */
+  private isRelevantMetadataChange(
+    file: TFile,
+    cache: CachedMetadata | null | undefined
+  ): boolean {
+    const activePath = this.lastRenderedFilePath;
+    if (!activePath || file.path === activePath) {
+      return true;
+    }
+    if (
+      this.displayedPaths.has(file.path) ||
+      this.displayedLinkTexts.has(file.basename)
+    ) {
+      return true;
+    }
+    for (const reference of [
+      ...(cache?.links ?? []),
+      ...(cache?.embeds ?? []),
+      ...(cache?.frontmatterLinks ?? []),
+    ]) {
+      const linkText = removeBlockReference(reference.link);
+      if (this.displayedLinkTexts.has(linkText)) {
+        return true;
+      }
+      const target = this.app.metadataCache.getFirstLinkpathDest(
+        linkText,
+        file.path
+      );
+      if (
+        target &&
+        (target.path === activePath || this.displayedPaths.has(target.path))
+      ) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private rememberDisplayedResult(activeFile: TFile, result: GatheredLinks): void {
+    const paths = new Set<string>([activeFile.path]);
+    const linkTexts = new Set<string>();
+    const add = (entity: FileEntity) => {
+      if (entity.targetPath) {
+        paths.add(entity.targetPath);
+      } else {
+        const linkText = removeBlockReference(entity.linkText);
+        const resolved = this.app.metadataCache.getFirstLinkpathDest(
+          linkText,
+          entity.sourcePath
+        );
+        if (resolved) {
+          paths.add(resolved.path);
+        } else {
+          linkTexts.add(linkText);
         }
-      })
-    );
+      }
+    };
+    result.forwardLinks.forEach(add);
+    result.backwardLinks.forEach(add);
+    result.newLinks.forEach(add);
+    for (const twoHopLink of result.twoHopLinks) {
+      add(twoHopLink.link);
+      twoHopLink.fileEntities.forEach(add);
+    }
+    for (const list of [result.tagLinksList, result.frontmatterKeyLinksList]) {
+      for (const propertiesLinks of list) {
+        propertiesLinks.fileEntities.forEach(add);
+      }
+    }
+    this.displayedPaths = paths;
+    this.displayedLinkTexts = linkTexts;
+    for (const path of paths) {
+      const file = this.getFileByPath(path);
+      if (file) {
+        this.linkSignatures.rememberIfUnknown(
+          path,
+          this.app.metadataCache.getFileCache(file)
+        );
+      }
+    }
+  }
+
+  private isCurrentModeHostMissingResults(): boolean {
+    if (
+      this.isUnloaded ||
+      !this.showLinksInMarkdown ||
+      this.settings.showTwoHopLinksInSeparatePane
+    ) {
+      return false;
+    }
+    const markdownView = this.app.workspace.getActiveViewOfType(MarkdownView);
+    if (!markdownView?.file || !this.isMarkdownHostReady(markdownView)) {
+      return false;
+    }
+    return getCurrentMarkdownHostElements(
+      markdownView.containerEl,
+      markdownView.getMode()
+    ).some((host) => !this.findDirectContainer(host)?.dataset.twohopRenderKey);
   }
 
   private scheduleRefresh(isForceUpdate: boolean, delayMs: number): void {
@@ -309,7 +434,7 @@ export default class TwohopLinksPlugin extends Plugin {
 
     this.scrollNavigator.cancelPending();
     if (this.showLinksInMarkdown) {
-      this.scheduleRefresh(true, this.getRefreshDebounceMs());
+      this.scheduleRefresh(false, this.getRefreshDebounceMs());
     }
   }
 
@@ -537,7 +662,10 @@ export default class TwohopLinksPlugin extends Plugin {
   }
 
   private getContainerHostElements(markdownView: MarkdownView): HTMLElement[] {
-    return getAllMarkdownHostElements(markdownView.containerEl);
+    return getCurrentMarkdownHostElements(
+      markdownView.containerEl,
+      markdownView.getMode()
+    );
   }
 
   private isMarkdownHostReady(markdownView: MarkdownView): boolean {
@@ -582,7 +710,7 @@ export default class TwohopLinksPlugin extends Plugin {
             this.isMarkdownHostReady(currentView)
         );
       },
-      onReady: () => this.scheduleRefresh(true, 0),
+      onReady: () => this.scheduleRefresh(false, 0),
     });
   }
 
@@ -625,34 +753,6 @@ export default class TwohopLinksPlugin extends Plugin {
     );
   }
 
-  private getActiveFileLinks(file: TFile | null): string[] {
-    if (!file) {
-      return [];
-    }
-
-    const cache = this.app.metadataCache.getFileCache(file);
-    return cache && cache.links ? cache.links.map((link) => link.link) : [];
-  }
-
-  private getActiveFileTags(file: TFile | null): string[] {
-    if (!file) {
-      return [];
-    }
-
-    const cache = this.app.metadataCache.getFileCache(file);
-
-    let tags = cache && cache.tags ? cache.tags.map((tag) => tag.tag) : [];
-
-    if (cache && cache.frontmatter && cache.frontmatter.tags) {
-      const frontMatterTags = parseFrontMatterTags(cache.frontmatter);
-      if (frontMatterTags) {
-        tags = tags.concat(frontMatterTags);
-      }
-    }
-
-    return tags;
-  }
-
   async renderTwohopLinks(isForceUpdate: boolean): Promise<void> {
     const activeLeaf = this.app.workspace.activeLeaf;
     const markdownView = this.app.workspace.getActiveViewOfType(MarkdownView);
@@ -682,18 +782,31 @@ export default class TwohopLinksPlugin extends Plugin {
     }
     this.markdownHostRetry.cancel();
     this.addPaddingBottom();
-    this.prepareLinksForFile(activeFile);
+    if (isForceUpdate) {
+      this.dataRevision++;
+    }
+    const sortOrder = this.prepareLinksForFile(activeFile);
+    const renderKey = `${this.dataRevision}\n${sortOrder}\n${activeFile.path}`;
+    this.removeOtherModeContainers(markdownView);
+    if (
+      this.getContainerHostElements(markdownView).every(
+        (host) =>
+          this.findDirectContainer(host)?.dataset.twohopRenderKey === renderKey
+      )
+    ) {
+      this.scrollNavigator.ensure(markdownView);
+      return;
+    }
     const generation = ++this.renderGeneration;
 
-    const currentLinks = this.getActiveFileLinks(activeFile);
-    const currentTags = this.getActiveFileTags(activeFile);
-
-    if (
-      isForceUpdate ||
-      this.previousLinks.sort().join(",") !== currentLinks.sort().join(",") ||
-      this.previousTags.sort().join(",") !== currentTags.sort().join(",")
-    ) {
-      let gatheredLinks: GatheredLinks;
+    let gatheredLinks: GatheredLinks;
+    if (this.lastGather?.key === renderKey) {
+      gatheredLinks = this.lastGather.result;
+    } else {
+      this.linkSignatures.remember(
+        activeFile.path,
+        this.app.metadataCache.getFileCache(activeFile)
+      );
       try {
         gatheredLinks = await this.links.gatherTwoHopLinks(activeFile);
       } catch (error) {
@@ -702,93 +815,81 @@ export default class TwohopLinksPlugin extends Plugin {
         }
         throw error;
       }
-      const {
-        forwardLinks,
-        newLinks,
-        backwardLinks,
-        twoHopLinks,
-        tagLinksList,
-        frontmatterKeyLinksList,
-      } = gatheredLinks;
+    }
 
-      const currentActiveFile = this.app.workspace.getActiveFile();
-      const currentActiveView =
-        this.app.workspace.getActiveViewOfType(MarkdownView);
-      if (
-        generation !== this.renderGeneration ||
-        currentActiveView !== markdownView ||
-        currentActiveFile?.path !== activeFile.path
-      ) {
-        return;
-      }
+    const currentActiveFile = this.app.workspace.getActiveFile();
+    const currentActiveView =
+      this.app.workspace.getActiveViewOfType(MarkdownView);
+    if (
+      generation !== this.renderGeneration ||
+      currentActiveView !== markdownView ||
+      currentActiveFile?.path !== activeFile.path
+    ) {
+      return;
+    }
+    this.lastGather = { key: renderKey, result: gatheredLinks };
+    this.rememberDisplayedResult(activeFile, gatheredLinks);
 
-      if (!this.isMarkdownHostReady(markdownView)) {
-        this.scheduleMarkdownHostRetry(activeLeaf, activeFile);
-        return;
-      }
-      this.markdownHostRetry.cancel();
-      const containers = this.getContainerElements(markdownView);
-
-      for (const container of containers) {
-        await this.injectTwohopLinks(
-          forwardLinks,
-          newLinks,
-          backwardLinks,
-          twoHopLinks,
-          tagLinksList,
-          frontmatterKeyLinksList,
-          container,
-          activeFile
-        );
-      }
-
-      this.previousLinks = currentLinks;
-      this.previousTags = currentTags;
+    if (!this.isMarkdownHostReady(markdownView)) {
+      this.scheduleMarkdownHostRetry(activeLeaf, activeFile);
+      return;
+    }
+    this.markdownHostRetry.cancel();
+    this.removeOtherModeContainers(markdownView);
+    for (const container of this.getContainerElements(markdownView)) {
+      this.injectTwohopLinks(gatheredLinks, container, activeFile, sortOrder);
+      container.dataset.twohopRenderKey = renderKey;
     }
 
     this.scrollNavigator.ensure(markdownView);
   }
 
-  async injectTwohopLinks(
-    forwardConnectedLinks: FileEntity[],
-    newLinks: FileEntity[],
-    backwardConnectedLinks: FileEntity[],
-    twoHopLinks: TwohopLink[],
-    tagLinksList: PropertiesLinks[],
-    frontmatterKeyLinksList: PropertiesLinks[],
+  /** Unmounts results left in the hosts of the modes that are not shown. */
+  private removeOtherModeContainers(markdownView: MarkdownView): void {
+    const currentHosts = new Set(
+      this.getContainerHostElements(markdownView)
+    );
+    for (const host of getAllMarkdownHostElements(markdownView.containerEl)) {
+      if (currentHosts.has(host)) continue;
+      const container = this.findDirectContainer(host);
+      if (container) {
+        ReactDOM.unmountComponentAtNode(container);
+        container.remove();
+      }
+      host.classList.remove(HOST_RELATED_REGION_CLASS);
+    }
+  }
+
+  injectTwohopLinks(
+    gatheredLinks: GatheredLinks,
     container: Element,
-    sourceFile: TFile
-  ): Promise<void> {
-    const showForwardConnectedLinks = this.settings.showForwardConnectedLinks;
-    const showBackwardConnectedLinks = this.settings.showBackwardConnectedLinks;
-    const showTwohopLinks = this.settings.showTwohopLinks;
-    const showNewLinks = this.settings.showNewLinks;
-    const showTagsLinks = this.settings.showTagsLinks;
-    const showPropertiesLinks = this.settings.showPropertiesLinks;
+    sourceFile: TFile,
+    sortOrder: SortOrder
+  ): void {
     ReactDOM.render(
       <TwohopLinksRootView
-        forwardConnectedLinks={forwardConnectedLinks}
-        newLinks={newLinks}
-        backwardConnectedLinks={backwardConnectedLinks}
-        twoHopLinks={twoHopLinks}
-        tagLinksList={tagLinksList}
-        frontmatterKeyLinksList={frontmatterKeyLinksList}
-        onClick={this.openFile.bind(this)}
-        getPreview={readPreview.bind(this)}
-        getTitle={getTitle.bind(this)}
+        forwardConnectedLinks={gatheredLinks.forwardLinks}
+        newLinks={gatheredLinks.newLinks}
+        backwardConnectedLinks={gatheredLinks.backwardLinks}
+        twoHopLinks={gatheredLinks.twoHopLinks}
+        tagLinksList={gatheredLinks.tagLinksList}
+        frontmatterKeyLinksList={gatheredLinks.frontmatterKeyLinksList}
+        onClick={this.handleOpenFile}
+        getPreview={this.handleGetPreview}
+        getTitle={this.handleGetTitle}
         app={this.app}
-        showForwardConnectedLinks={showForwardConnectedLinks}
-        showBackwardConnectedLinks={showBackwardConnectedLinks}
-        showTwohopLinks={showTwohopLinks}
-        showNewLinks={showNewLinks}
-        showTagsLinks={showTagsLinks}
-        showPropertiesLinks={showPropertiesLinks}
+        showForwardConnectedLinks={this.settings.showForwardConnectedLinks}
+        showBackwardConnectedLinks={this.settings.showBackwardConnectedLinks}
+        showTwohopLinks={this.settings.showTwohopLinks}
+        showNewLinks={this.settings.showNewLinks}
+        showTagsLinks={this.settings.showTagsLinks}
+        showPropertiesLinks={this.settings.showPropertiesLinks}
         autoLoadTwoHopLinks={this.settings.autoLoadTwoHopLinks}
         includeBodyInCardSearch={this.settings.includeBodyInCardSearch}
         sourcePath={sourceFile.path}
-        sortOrder={this.prepareLinksForFile(sourceFile)}
+        sortOrder={sortOrder}
         defaultSortOrder={this.settings.sortOrder}
-        onSortOrderChange={this.setTemporarySortOrder.bind(this)}
+        onSortOrderChange={this.handleSortOrderChange}
         initialBoxCount={this.settings.initialBoxCount}
         initialSectionCount={this.settings.initialSectionCount}
       />,
@@ -819,7 +920,7 @@ export default class TwohopLinksPlugin extends Plugin {
     this.app.workspace.iterateAllLeaves((leaf) => {
       if (!(leaf.view instanceof MarkdownView)) return;
 
-      for (const host of this.getContainerHostElements(leaf.view)) {
+      for (const host of getAllMarkdownHostElements(leaf.view.containerEl)) {
         const container = this.findDirectContainer(host);
         if (container) {
           ReactDOM.unmountComponentAtNode(container);

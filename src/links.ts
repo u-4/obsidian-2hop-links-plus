@@ -137,11 +137,17 @@ export class Links {
     this.graphIndexCache = new GraphIndexCache(app);
   }
 
-  invalidateMetadataCaches(): void {
+  /**
+   * Drops results built from older metadata. A change unrelated to the shown
+   * note keeps the gather in progress, whose result stays valid for display.
+   */
+  invalidateMetadataCaches(cancelActiveGather = true): void {
     this.metadataRevision++;
-    this.graphIndexCache.invalidate();
+    this.graphIndexCache.invalidate(cancelActiveGather);
     this.resultCache.clear();
-    this.cancelActiveGather();
+    if (cancelActiveGather) {
+      this.cancelActiveGather();
+    }
   }
 
   invalidateCanvasCaches(): void {
@@ -203,9 +209,9 @@ export class Links {
       showTagsLinks: this.settings.showTagsLinks,
       showPropertiesLinks: this.settings.showPropertiesLinks,
     });
-    const fileKey = activeFile
-      ? `${activeFile.path}:${activeFile.stat.mtime}:${activeFile.stat.size}`
-      : "__all_files__";
+    // Metadata changes that affect links bump metadataRevision, so text-only
+    // edits of the active note keep its cached result.
+    const fileKey = activeFile ? activeFile.path : "__all_files__";
     return `${this.metadataRevision}:${this.canvasRevision}:${fileKey}:${settingsKey}`;
   }
 
@@ -478,10 +484,7 @@ export class Links {
 
   async gatherTwoHopLinks(activeFile: TFile | null): Promise<GatheredLinks> {
     const key = this.createGatherKey(activeFile);
-    const shouldCacheResult = this.settings.sortOrder !== "random";
-    const cached = shouldCacheResult
-      ? this.getCachedGatherResult(key)
-      : null;
+    const cached = this.getCachedGatherResult(key);
     if (cached) {
       if (this.pendingGather?.key !== key) {
         this.cancelActiveGather();
@@ -504,9 +507,7 @@ export class Links {
       .then((result) => {
         throwIfCalculationCancelled(controller.signal);
         this.lastGatherMs = Math.max(0, Date.now() - startedAt);
-        if (shouldCacheResult) {
-          this.cacheGatherResult(key, result);
-        }
+        this.cacheGatherResult(key, result);
         return result;
       })
       .catch((error: unknown) => {

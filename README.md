@@ -38,10 +38,8 @@ Cosense / Scrapbox に近づけるため、関連度順・PageRank 風の並び�
 `2hop-links-plus` を引き継ぐため、元の 2Hop Links Plus と同時にはインストールできず、
 置き換えとして動作します。導入前に既存プラグインフォルダをバックアップしてください。
 
-最新の公開版は `0.42.0` です。狭い画面でも検索・設定・一時ソートを一行に保ち、
-読みやすい 2 列カードへ切り替えます。検索結果が減っても表示領域を維持し、
-設定の既定値と異なる一時ソートはアクセント色の点で示します。本文カードと
-2-hop／標準 backlinks の境界を外部 CSS から安定して調整できる連携用クラスも追加しました。
+最新の公開版は `0.43.0` です。ノートを書いている間は、リンクやタグが変わらない限り
+関連カードを計算し直さず、並びも変えません。「ランダム」の並びも描き直しで変わりません。
 
 設定の `Tab switch calculation delay (ms)` は通常のタブ切替後の待ち時間です
 （既定 `200` ms）。コマンドパレットの `Show performance statistics` と
@@ -116,11 +114,9 @@ This is not an official release of the upstream project. It intentionally keeps
 the `2hop-links-plus` plugin ID, so it replaces the upstream plugin rather than
 installing alongside it. Back up your existing plugin directory before trying it.
 
-The latest release is `0.42.0`. It keeps search, settings, and temporary sorting
-on one row in narrow views, switches to readable two-column cards, and preserves
-the rendered results height while a search narrows the card set. Temporary sort
-overrides gain an accent dot, and stable integration hooks let optional CSS keep
-the note card visually separate from inline 2-hop results and standard backlinks.
+The latest release is `0.43.0`. While you write, related cards are recomputed
+only when links or tags change, so their order stays still; the random order no
+longer reshuffles on refresh.
 
 `Tab switch calculation delay (ms)` controls the normal post-switch delay and
 defaults to `200` ms. The command palette actions `Show performance statistics`

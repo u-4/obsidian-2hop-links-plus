@@ -5,9 +5,12 @@
 - This is a public community fork based on `2hop-links-plus` 0.37.0.
 - The Git history is rooted in the upstream `0.37.0` tag; local improvements are
   maintained on `main`.
-- Version `0.42.0` is the current release. It adds a responsive mobile toolbar,
-  readable narrow-layout cards, stable search geometry, theme-aware temporary
-  sorting, and a documented CSS integration boundary around inline results.
+- Version `0.43.0` is the current release. It stops recomputing and reordering
+  related cards while a note is edited unless its links, tags, or title
+  frontmatter change, renders only into the visible Markdown mode, and makes the
+  random order stable.
+- A three-step plan (0.43.0 stability, 0.44.0 Cosense-style Related order,
+  0.45.0 lazy cards aligned with PalmWiki Home) was agreed on 2026-10-04.
 - The repository is intended for source development, review, and reproducible releases.
 
 ## 0.41.1 Markdown host readiness fix

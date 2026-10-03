@@ -386,16 +386,26 @@ export default class TwohopLinksRootView extends React.Component<
       this.hideSortMenu(false);
     }
     if (this.props !== prevProps) {
+      // New results for the same note and order keep what the user expanded.
+      const isNewView =
+        prevProps.sourcePath !== this.props.sourcePath ||
+        prevProps.sortOrder !== this.props.sortOrder ||
+        prevProps.initialBoxCount !== this.props.initialBoxCount ||
+        prevProps.initialSectionCount !== this.props.initialSectionCount;
       this.setState((prevState) => ({
-        displayedBoxCount: this.initialDisplayedBoxCount(),
-        displayedSectionCount: this.initialDisplayedSectionCount(),
+        displayedBoxCount: isNewView
+          ? this.initialDisplayedBoxCount()
+          : prevState.displayedBoxCount,
+        displayedSectionCount: isNewView
+          ? this.initialDisplayedSectionCount()
+          : prevState.displayedSectionCount,
+        resetCounter: prevState.resetCounter + (isNewView ? 1 : 0),
         prevProps: this.props,
         isLoaded: getNextLoadedState(prevState.isLoaded, prevProps, this.props),
         reservedResultsHeight:
           prevProps.sourcePath !== this.props.sourcePath
             ? null
             : prevState.reservedResultsHeight,
-        resetCounter: prevState.resetCounter + 1,
       }));
       if (this.state.searchInput.trim().length > 0) {
         this.scheduleSearch(this.state.searchInput);

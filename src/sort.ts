@@ -28,37 +28,41 @@ type FileSortValue = (file: TFile) => string | number;
 export function getSortFunction(sortOrder: SortOrder): EntitySortComparator {
   switch (sortOrder) {
     case "random":
-      return () => Math.random() - 0.5;
+      return (a, b) =>
+        compareNumberAsc(
+          stableShuffleValue(getEntityText(a)),
+          stableShuffleValue(getEntityText(b))
+        ) || compareEntityTitleAsc(a, b);
     case "filenameAsc":
       return (a, b) =>
         a.entity && b.entity
           ? a.entity.linkText.localeCompare(b.entity.linkText)
-          : Math.random() - 0.5;
+          : 0;
     case "filenameDesc":
       return (a, b) =>
         a.entity && b.entity
           ? b.entity.linkText.localeCompare(a.entity.linkText)
-          : Math.random() - 0.5;
+          : 0;
     case "modifiedDesc":
       return (a, b) =>
         a.stat && b.stat && a.stat.mtime && b.stat.mtime
           ? b.stat.mtime - a.stat.mtime
-          : Math.random() - 0.5;
+          : 0;
     case "modifiedAsc":
       return (a, b) =>
         a.stat && b.stat && a.stat.mtime && b.stat.mtime
           ? a.stat.mtime - b.stat.mtime
-          : Math.random() - 0.5;
+          : 0;
     case "createdDesc":
       return (a, b) =>
         a.stat && b.stat && a.stat.ctime && b.stat.ctime
           ? b.stat.ctime - a.stat.ctime
-          : Math.random() - 0.5;
+          : 0;
     case "createdAsc":
       return (a, b) =>
         a.stat && b.stat && a.stat.ctime && b.stat.ctime
           ? a.stat.ctime - b.stat.ctime
-          : Math.random() - 0.5;
+          : 0;
     case "relatedScoreDesc":
       return (a, b) =>
         compareNumberDesc(
@@ -116,21 +120,25 @@ export function getTwoHopSortFunction(
 ): TwoHopSortComparator {
   switch (sortOrder) {
     case "random":
-      return () => Math.random() - 0.5;
+      return (a, b) =>
+        compareNumberAsc(
+          stableShuffleValue(getTwoHopText(a)),
+          stableShuffleValue(getTwoHopText(b))
+        ) || compareTwoHopTitleAsc(a, b);
     case "filenameAsc":
       return (a, b) =>
         a.twoHopLinkEntity && b.twoHopLinkEntity
           ? a.twoHopLinkEntity.link.linkText.localeCompare(
               b.twoHopLinkEntity.link.linkText
             )
-          : Math.random() - 0.5;
+          : 0;
     case "filenameDesc":
       return (a, b) =>
         a.twoHopLinkEntity && b.twoHopLinkEntity
           ? b.twoHopLinkEntity.link.linkText.localeCompare(
               a.twoHopLinkEntity.link.linkText
             )
-          : Math.random() - 0.5;
+          : 0;
     case "modifiedDesc":
       return (a, b) => (b.stat?.mtime ?? 0) - (a.stat?.mtime ?? 0);
     case "modifiedAsc":
@@ -180,7 +188,7 @@ export function getTwoHopSortFunction(
 export function getSortFunctionForFile(sortOrder: SortOrder): FileSortValue {
   switch (sortOrder) {
     case "random":
-      return () => Math.random() - 0.5;
+      return (file: TFile) => stableShuffleValue(file.path);
     case "filenameAsc":
       return (file: TFile) => file.basename;
     case "filenameDesc":
@@ -299,14 +307,31 @@ function compareStatDesc(
   return (b?.stat?.[key] ?? 0) - (a?.stat?.[key] ?? 0);
 }
 
+function getEntityText(item: EntitySortItem): string {
+  return item?.entity?.linkText ?? item?.linkText ?? "";
+}
+
+function getTwoHopText(item: TwoHopSortItem): string {
+  return item?.twoHopLinkEntity?.link?.linkText ?? "";
+}
+
 function compareEntityTitleAsc(a: EntitySortItem, b: EntitySortItem): number {
-  const aText = a?.entity?.linkText ?? a?.linkText ?? "";
-  const bText = b?.entity?.linkText ?? b?.linkText ?? "";
-  return aText.localeCompare(bText);
+  return getEntityText(a).localeCompare(getEntityText(b));
 }
 
 function compareTwoHopTitleAsc(a: TwoHopSortItem, b: TwoHopSortItem): number {
-  const aText = a?.twoHopLinkEntity?.link?.linkText ?? "";
-  const bText = b?.twoHopLinkEntity?.link?.linkText ?? "";
-  return aText.localeCompare(bText);
+  return getTwoHopText(a).localeCompare(getTwoHopText(b));
+}
+
+/**
+ * A fixed pseudo-random position per name (FNV-1a), so the random order stays
+ * the same across refreshes instead of reshuffling.
+ */
+export function stableShuffleValue(text: string): number {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < text.length; i++) {
+    hash ^= text.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return hash >>> 0;
 }

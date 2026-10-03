@@ -140,34 +140,24 @@ export class SeparatePaneView extends ItemView {
         this.previousLinks.sort().join(",") !== currentLinks.sort().join(",") ||
         this.previousTags.sort().join(",") !== currentTags.sort().join(",")
       ) {
-        this.plugin.prepareLinksForFile(activeFile);
+        const sortOrder = this.plugin.prepareLinksForFile(activeFile);
         const generation = ++this.renderGeneration;
         const activePath = activeFile?.path ?? null;
-        const {
-          forwardLinks,
-          newLinks,
-          backwardLinks,
-          twoHopLinks,
-          tagLinksList,
-          frontmatterKeyLinksList,
-        } = await this.links.gatherTwoHopLinks(activeFile);
+        const gatheredLinks = await this.links.gatherTwoHopLinks(activeFile);
 
         if (
           generation !== this.renderGeneration ||
-          (this.lastMainFile?.path ?? null) !== activePath
+          (this.lastMainFile?.path ?? null) !== activePath ||
+          !activeFile
         ) {
           return;
         }
 
-        await this.plugin.injectTwohopLinks(
-          forwardLinks,
-          newLinks,
-          backwardLinks,
-          twoHopLinks,
-          tagLinksList,
-          frontmatterKeyLinksList,
+        this.plugin.injectTwohopLinks(
+          gatheredLinks,
           this.containerEl,
-          activeFile
+          activeFile,
+          sortOrder
         );
 
         this.addLinkEventListeners();

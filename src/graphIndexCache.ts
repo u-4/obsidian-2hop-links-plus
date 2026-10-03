@@ -107,8 +107,13 @@ export class GraphIndexCache {
       controller.signal
     )
       .then((graph) => {
-        if (controller.signal.aborted || revision !== this.revision) {
+        if (controller.signal.aborted) {
           throw new CalculationCancelledError();
+        }
+        if (revision !== this.revision) {
+          // Metadata changed without cancelling this build; the graph is still
+          // usable for the gather that requested it but must not be cached.
+          return graph;
         }
 
         this.stats.lastBuildMs = Math.max(0, this.now() - startedAt);
@@ -143,10 +148,12 @@ export class GraphIndexCache {
     return promise;
   }
 
-  invalidate(): void {
+  invalidate(abortPending = true): void {
     this.revision++;
     this.cached = null;
-    this.pending?.controller.abort();
+    if (abortPending) {
+      this.pending?.controller.abort();
+    }
     this.pending = null;
   }
 

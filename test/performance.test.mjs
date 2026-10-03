@@ -11,6 +11,11 @@ import {
   shouldContinueMarkdownHostRetry,
 } from "../src/markdownHostReadiness.ts";
 import { GraphIndexCache } from "../src/graphIndexCache.ts";
+import {
+  getLinkSignature,
+  LinkSignatureTracker,
+} from "../src/linkSignature.ts";
+import { getSortFunction, getTwoHopSortFunction } from "../src/sort.ts";
 import { chooseInlineRestoreLeaf } from "../src/inlineRestoreLeaf.ts";
 import { prepareGraphOrderForPath } from "../src/ranking.ts";
 import { Links } from "../src/links.ts";
@@ -822,4 +827,109 @@ test("a newer tab cancels the superseded gather after shared I/O settles", async
   assert.ok(stats.canvasIndexHits >= 1);
   assert.equal(stats.canvasIndexBuilds, 1);
   assert.equal(counters.vaultRead, 1);
+});
+
+const signatureOptions = {
+  frontmatterKeys: [],
+  frontmatterPropertyKeyAsTitle: "",
+};
+
+function metadataWithLinks(links, extra = {}) {
+  return {
+    links: links.map((link, index) => ({
+      link,
+      position: { start: { offset: index * 10, line: index } },
+    })),
+    ...extra,
+  };
+}
+
+test("typing text without touching links keeps the link signature", () => {
+  const tracker = new LinkSignatureTracker(() => signatureOptions);
+  assert.equal(tracker.update("A.md", metadataWithLinks(["B", "C"])), true);
+  assert.equal(tracker.update("A.md", metadataWithLinks(["B", "C"])), false);
+  assert.equal(
+    tracker.update(
+      "A.md",
+      metadataWithLinks(["B", "C"], { sections: [{ type: "paragraph" }] })
+    ),
+    false
+  );
+  assert.equal(tracker.update("A.md", metadataWithLinks(["B", "C", "D"])), true);
+  assert.equal(tracker.update("A.md", metadataWithLinks(["C", "B", "D"])), true);
+  tracker.remember("B.md", metadataWithLinks(["A"]));
+  assert.equal(tracker.update("B.md", metadataWithLinks(["A"])), false);
+});
+
+test("tags and title frontmatter are part of the link signature", () => {
+  const base = metadataWithLinks(["B"]);
+  const withTag = {
+    ...base,
+    tags: [{ tag: "#topic", position: { start: { offset: 50 } } }],
+  };
+  assert.notEqual(
+    getLinkSignature(base, signatureOptions),
+    getLinkSignature(withTag, signatureOptions)
+  );
+  const titleOptions = { ...signatureOptions, frontmatterPropertyKeyAsTitle: "title" };
+  assert.notEqual(
+    getLinkSignature({ ...base, frontmatter: { title: "One" } }, titleOptions),
+    getLinkSignature({ ...base, frontmatter: { title: "Two" } }, titleOptions)
+  );
+  assert.equal(
+    getLinkSignature({ ...base, frontmatter: { status: "a" } }, signatureOptions),
+    getLinkSignature({ ...base, frontmatter: { status: "b" } }, signatureOptions)
+  );
+});
+
+test("random order is the same on every refresh", () => {
+  const items = ["Alpha", "Beta", "Gamma", "Delta", "Epsilon", "Zeta"].map(
+    (linkText) => ({ entity: { linkText } })
+  );
+  const order = () =>
+    [...items].sort(getSortFunction("random")).map((it) => it.entity.linkText);
+  const first = order();
+  for (let i = 0; i < 5; i++) {
+    assert.deepEqual(order(), first);
+  }
+  const sections = items.map((it) => ({
+    twoHopLinkEntity: { link: { linkText: it.entity.linkText } },
+  }));
+  const sectionOrder = () =>
+    [...sections]
+      .sort(getTwoHopSortFunction("random"))
+      .map((it) => it.twoHopLinkEntity.link.linkText);
+  assert.deepEqual(sectionOrder(), sectionOrder());
+});
+
+test("time sorts keep a stable order when a date is missing", () => {
+  const items = ["C", "A", "B"].map((linkText) => ({
+    entity: { linkText },
+    stat: null,
+  }));
+  const sorted = () =>
+    [...items].sort(getSortFunction("modifiedDesc")).map((it) => it.entity.linkText);
+  assert.deepEqual(sorted(), ["C", "A", "B"]);
+  assert.deepEqual(sorted(), sorted());
+});
+
+test("random order results are cached like the other orders", async () => {
+  const { app, files } = createSyntheticApp({ fileCount: 80, linksPerFile: 4 });
+  const links = new Links(app, createSettings({ sortOrder: "random" }));
+  const first = await links.gatherTwoHopLinks(files[0]);
+  const again = await links.gatherTwoHopLinks(files[0]);
+  assert.equal(again, first);
+  assert.equal(links.getPerformanceStats().resultCacheHits, 1);
+});
+
+test("an unrelated metadata change does not cancel the gather in progress", async () => {
+  const { app, files } = createSyntheticApp({ fileCount: 300, linksPerFile: 6 });
+  const links = new Links(app, createSettings());
+  const pending = links.gatherTwoHopLinks(files[0]);
+  links.invalidateMetadataCaches(false);
+  const result = await pending;
+  assert.ok(result.forwardLinks.length > 0);
+  assert.equal(links.getPerformanceStats().gatherCancellations, 0);
+  await links.gatherTwoHopLinks(files[0]);
+  assert.equal(links.getPerformanceStats().resultComputations, 2);
 });
