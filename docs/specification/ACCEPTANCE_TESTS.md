@@ -191,6 +191,8 @@ Expected result:
   all popups. Without Cmd, pointing at a card does nothing.
 - Moving the pointer off a link or card inside a popup, while staying inside
   the popup, keeps it open.
+- Clicking the body link a popup came from opens the note and closes the
+  popup; opening another note while the pointer rests on a popup keeps it.
 - After a link or card inside a popup opened the next popup, moving back onto
   the first popup away from that link or card closes the next popup in about
   0.25 s; passing over the first popup on the way to the next one does not.

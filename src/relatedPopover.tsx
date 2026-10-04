@@ -201,6 +201,9 @@ export class RelatedPopover {
 
   private lastTypedAt = 0;
   private lastButtons = 0;
+  private lastClientX = Number.NaN;
+  private lastClientY = Number.NaN;
+  private lastPointerDoc: Document | null = null;
   private lastScreenX = Number.NaN;
   private lastScreenY = Number.NaN;
 
@@ -222,6 +225,9 @@ export class RelatedPopover {
    */
   readonly onPointerMove = (event: MouseEvent): void => {
     this.lastButtons = event.buttons;
+    this.lastClientX = event.clientX;
+    this.lastClientY = event.clientY;
+    this.lastPointerDoc = (event.target as Node | null)?.ownerDocument ?? null;
     // The browser also reports a move when content scrolls or shifts under a
     // still pointer (for example when a new popup scrolls to its highlighted
     // line). Only a change of the pointer's screen position counts.
@@ -346,6 +352,26 @@ export class RelatedPopover {
     // closes the stack when the pointer really goes away.
     if (anchor.closest(".twohop-popover")) return;
     if (this.stack.length > 0) this.scheduleClose();
+  }
+
+  /**
+   * After opening another note (for example by clicking the link a popup came
+   * from), look again at what is under the pointer: popups stay only while
+   * the pointer is on them or on the link or card they came from.
+   */
+  recheckAfterNavigation(): void {
+    if (this.stack.length === 0) return;
+    if (this.hovered && !this.hovered.anchor.isConnected) this.hovered = null;
+    const root = this.stack[0];
+    const doc = this.lastPointerDoc ?? root.anchor.ownerDocument;
+    const under = Number.isFinite(this.lastClientX)
+      ? doc.elementFromPoint(this.lastClientX, this.lastClientY)
+      : null;
+    const isOnPopups =
+      !!under &&
+      ((root.anchor.isConnected && root.anchor.contains(under)) ||
+        this.stack.some((entry) => entry.el.contains(under)));
+    if (!isOnPopups) this.close();
   }
 
   isOpen(): boolean {

@@ -232,6 +232,8 @@ export default class TwohopLinksPlugin extends Plugin {
     );
     this.registerEvent(
       this.app.workspace.on("file-open", async () => {
+        // Once the new note is drawn, popups whose link went away close.
+        window.setTimeout(() => this.popover.recheckAfterNavigation(), 50);
         await this.refreshTwohopLinks(this.app.workspace.activeLeaf);
       })
     );
