@@ -191,6 +191,9 @@ Expected result:
   all popups. Without Cmd, pointing at a card does nothing.
 - Moving the pointer off a link or card inside a popup, while staying inside
   the popup, keeps it open.
+- After a link or card inside a popup opened the next popup, moving back onto
+  the first popup away from that link or card closes the next popup in about
+  0.25 s; passing over the first popup on the way to the next one does not.
 - The preview scrolls to and highlights the line that links back to where the
   pointer came from: for a 2-hop card the line with the group's link, for a
   link inside a popup the line linking to that popup's note, and for a link

@@ -24,6 +24,10 @@ const CLOSE_DELAY_MS = 300;
 export const HOVER_REST_MS = 300;
 export const TYPING_PAUSE_MS = 1000;
 
+// A deeper popup closes this long after the pointer goes back to the popup
+// below it (anywhere but the link or card it came from).
+export const CHILD_CLOSE_DELAY_MS = 250;
+
 export type PopupTrigger = "mod" | "hover";
 export type PopupCardsPosition = "above" | "below" | "auto";
 
@@ -216,6 +220,7 @@ export class RelatedPopover {
    */
   readonly onPointerMove = (event: MouseEvent): void => {
     this.lastButtons = event.buttons;
+    this.trackReturnToParent(event.target);
     if (this.trigger !== "hover") return;
     const target = this.hovered;
     if (!target || !(event.target instanceof Node)) return;
@@ -243,6 +248,48 @@ export class RelatedPopover {
       this.openFor(target);
     }, delay);
   };
+
+  private childCloseTimer: ReturnType<typeof setTimeout> | null = null;
+  private childCloseLevel: number | null = null;
+
+  /**
+   * Back on a lower popup, away from the link or card that opened the popup
+   * above it: close the popups above after a short pause, so crossing the
+   * lower popup on the way up does not close them.
+   */
+  private trackReturnToParent(target: EventTarget | null): void {
+    if (this.stack.length < 2 || !(target instanceof Node)) {
+      this.cancelChildClose();
+      return;
+    }
+    let level = -1;
+    for (let i = this.stack.length - 1; i >= 0; i--) {
+      if (this.stack[i].el.contains(target)) {
+        level = i;
+        break;
+      }
+    }
+    const child = this.stack[level + 1];
+    if (level < 0 || !child || child.anchor.contains(target)) {
+      this.cancelChildClose();
+      return;
+    }
+    if (this.childCloseLevel === level + 1) return;
+    this.cancelChildClose();
+    this.childCloseLevel = level + 1;
+    this.childCloseTimer = setTimeout(() => {
+      this.childCloseTimer = null;
+      this.childCloseLevel = null;
+      // Only the popup that was there when the pointer came back.
+      if (this.stack[level + 1] === child) this.closeFrom(level + 1);
+    }, CHILD_CLOSE_DELAY_MS);
+  }
+
+  private cancelChildClose(): void {
+    if (this.childCloseTimer !== null) clearTimeout(this.childCloseTimer);
+    this.childCloseTimer = null;
+    this.childCloseLevel = null;
+  }
 
   private readonly onKey = (event: KeyboardEvent) => {
     if (event.key !== "Meta" && event.key !== "Control") return;
@@ -295,6 +342,7 @@ export class RelatedPopover {
   close(): void {
     this.cancelClose();
     this.cancelOpen();
+    this.cancelChildClose();
     this.closeFrom(0);
     if (this.isScoped) {
       this.plugin.app.keymap.popScope(this.scope);
@@ -343,6 +391,7 @@ export class RelatedPopover {
     focus: PreviewFocus
   ): void {
     this.closeFrom(level);
+    this.cancelChildClose();
     const doc = anchor.ownerDocument;
     this.listen(doc);
     const el = doc.createElement("div");
