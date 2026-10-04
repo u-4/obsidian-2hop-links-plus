@@ -522,6 +522,8 @@ body.theme-dark .twohop-links-sort-menu-scope {
 }
 
 .twohop-popover-cards {
+  /* Scrolling past the end does not move the note behind. */
+  overscroll-behavior: contain;
   display: grid;
   flex: 0 0 auto;
   grid-auto-flow: column;
@@ -555,6 +557,8 @@ body.theme-dark .twohop-links-sort-menu-scope {
 
 /* Cards above the note title while the title is pointed at. */
 .twohop-title-strip {
+  /* Scrolling past the end does not move the note behind. */
+  overscroll-behavior: contain;
   position: fixed;
   z-index: var(--layer-popover);
   box-sizing: border-box;
@@ -586,6 +590,8 @@ body.theme-dark .twohop-links-sort-menu-scope {
 }
 
 .twohop-popover-preview {
+  /* Scrolling past the end does not move the note behind. */
+  overscroll-behavior: contain;
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;

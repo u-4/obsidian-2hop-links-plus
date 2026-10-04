@@ -201,6 +201,8 @@ export class RelatedPopover {
 
   private lastTypedAt = 0;
   private lastButtons = 0;
+  private lastScreenX = Number.NaN;
+  private lastScreenY = Number.NaN;
 
   private get trigger(): PopupTrigger {
     return this.plugin.settings.popupTrigger === "hover" ? "hover" : "mod";
@@ -220,6 +222,17 @@ export class RelatedPopover {
    */
   readonly onPointerMove = (event: MouseEvent): void => {
     this.lastButtons = event.buttons;
+    // The browser also reports a move when content scrolls or shifts under a
+    // still pointer (for example when a new popup scrolls to its highlighted
+    // line). Only a change of the pointer's screen position counts.
+    if (
+      event.screenX === this.lastScreenX &&
+      event.screenY === this.lastScreenY
+    ) {
+      return;
+    }
+    this.lastScreenX = event.screenX;
+    this.lastScreenY = event.screenY;
     this.trackReturnToParent(event.target);
     if (this.trigger !== "hover") return;
     const target = this.hovered;

@@ -5,7 +5,7 @@
 - This is a public community fork based on `2hop-links-plus` 0.37.0.
 - The Git history is rooted in the upstream `0.37.0` tag; local improvements are
   maintained on `main`.
-- Version `0.48.1` is the current release (deeper popups close when the pointer returns to the popup below). Popups keep a sticky one-line
+- Version `0.48.2` is the current release (deeper popups close when the pointer returns to the popup below; pointer moves without a screen position change are ignored; overscroll is contained). Popups keep a sticky one-line
   title; settings `popupTrigger` ("mod" default, "hover") and
   `popupCardsPosition` ("above" default, "below", "auto"). Hover-only opens on
   pointer rest via document mousemove, not after typing or with a button down
