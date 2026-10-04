@@ -181,8 +181,10 @@ Hold Cmd and point at a card.
 
 Expected result:
 
-- A popup opens beside the card with up to 10 related cards in a row and the
-  note's preview below. Near the bottom of the window it grows upward.
+- A popup opens off a corner of the card (bottom-right first), overlapping it
+  by about 20 px, so the cards to the right and below can still be pointed at.
+  Up to 10 related cards sit without a background above the preview, or below
+  it when the popup opens upward near the bottom of the window.
 - Holding Cmd over a card or link inside the popup opens the next popup; a
   link's popup opens below the link, or above it near the bottom.
 - Clicking inside the preview opens the note in Hover Editor; Escape closes

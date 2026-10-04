@@ -503,19 +503,22 @@ body.theme-dark .twohop-links-sort-menu-scope {
   stroke-width: 2.25;
 }
 
-/* Light popup on Cmd+hover over a card: related cards above a read-only
-   preview. It is placed on document.body, outside the related-links region. */
+/* Light popup on Cmd+hover over a card: related cards attached above (or,
+   when the popup opens upward, below) a read-only preview. Only the preview
+   and the cards are drawn; the gaps let the pointer reach cards underneath.
+   It is placed on document.body, outside the related-links region. */
 .twohop-popover {
   position: fixed;
   z-index: var(--layer-popover);
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
-  background: var(--background-primary);
-  border: 1px solid var(--background-modifier-border);
-  border-radius: 8px;
-  box-shadow: var(--shadow-l);
+  gap: 10px;
+  pointer-events: none;
+}
+
+.twohop-popover.is-above {
+  flex-direction: column-reverse;
 }
 
 .twohop-popover-cards {
@@ -523,12 +526,15 @@ body.theme-dark .twohop-links-sort-menu-scope {
   flex: 0 0 auto;
   grid-auto-flow: column;
   grid-auto-columns: 132px;
+  justify-content: start;
   gap: 8px;
-  padding: 10px;
   overflow-x: auto;
   overflow-y: hidden;
-  border-bottom: 1px solid var(--background-modifier-border);
-  background: var(--cosense-popover-cards-bg, var(--background-secondary));
+  scrollbar-width: none;
+}
+
+.twohop-popover-cards::-webkit-scrollbar {
+  display: none;
 }
 
 .twohop-popover-cards[hidden] {
@@ -538,6 +544,8 @@ body.theme-dark .twohop-links-sort-menu-scope {
 .twohop-popover-cards .twohop-links-box {
   height: var(--cosense-popover-card-height, 150px);
   padding: 8px;
+  pointer-events: auto;
+  box-shadow: var(--shadow-s);
 }
 
 .twohop-popover-cards .twohop-links-box-media {
@@ -550,6 +558,11 @@ body.theme-dark .twohop-links-sort-menu-scope {
   min-height: 0;
   overflow-y: auto;
   padding: 14px 18px;
+  pointer-events: auto;
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  box-shadow: var(--shadow-l);
   font-size: var(--font-ui-small);
   cursor: pointer;
   /* Obsidian turns off text selection app-wide; allow copying from previews. */

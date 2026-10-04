@@ -32,16 +32,25 @@ export interface Placement {
   top: number;
   width: number;
   height: number;
+  /** True when the popup opens above its anchor: the cards go at its bottom. */
+  isAbove: boolean;
 }
 
 const clamp = (value: number, min: number, max: number) =>
   Math.min(Math.max(min, value), Math.max(min, max));
 
+// How far a card's popup overlaps the card's corner (as in PalmWiki Home).
+const CORNER_OVERLAP = 20;
+
 /**
- * Where a popup goes, by the free space around its anchor. A card's popup goes
- * beside the card, growing downward from a card in the upper half of the
- * window and upward from one in the lower half. A link's popup goes below the
- * link when there is room, otherwise above, and shrinks to the larger space.
+ * Where a popup goes, by the free space around its anchor.
+ *
+ * A card's popup opens off one of the card's corners, overlapping it a little
+ * so it reads as belonging to the card while the cards beside and below stay
+ * free to point at: bottom-right first, then top-right, bottom-left and
+ * top-left, taking the first that fits (as PalmWiki Home 1.7.3 does), or the
+ * one with the most room. A link's popup goes below the link when there is
+ * room, otherwise above, and shrinks to the larger space.
  */
 export function placePopover(
   anchor: Rect,
@@ -51,21 +60,34 @@ export function placePopover(
   const width = Math.min(POPOVER_WIDTH, viewport.width - 2 * MARGIN);
   const maxHeight = Math.min(POPOVER_HEIGHT, viewport.height - 2 * MARGIN);
   if (beside) {
-    const spaceRight = viewport.width - MARGIN - (anchor.right + MARGIN);
-    const spaceLeft = anchor.left - MARGIN - MARGIN;
-    let left: number;
-    if (spaceRight >= width) left = anchor.right + MARGIN;
-    else if (spaceLeft >= width) left = anchor.left - MARGIN - width;
-    else if (spaceRight >= spaceLeft) left = viewport.width - MARGIN - width;
-    else left = MARGIN;
     const height = maxHeight;
-    const isUpperHalf = (anchor.top + anchor.bottom) / 2 < viewport.height / 2;
-    const top = isUpperHalf ? anchor.top : anchor.bottom - height;
+    const o = CORNER_OVERLAP;
+    const corners: Array<{ left: number; top: number; isAbove: boolean }> = [
+      { left: anchor.right - o, top: anchor.bottom - o, isAbove: false },
+      { left: anchor.right - o, top: anchor.top + o - height, isAbove: true },
+      { left: anchor.left + o - width, top: anchor.bottom - o, isAbove: false },
+      { left: anchor.left + o - width, top: anchor.top + o - height, isAbove: true },
+    ];
+    const room = (corner: { left: number; top: number }) =>
+      Math.max(
+        0,
+        Math.min(corner.left + width, viewport.width - MARGIN) -
+          Math.max(corner.left, MARGIN)
+      ) *
+      Math.max(
+        0,
+        Math.min(corner.top + height, viewport.height - MARGIN) -
+          Math.max(corner.top, MARGIN)
+      );
+    const best =
+      corners.find((corner) => room(corner) === width * height) ??
+      corners.reduce((a, b) => (room(b) > room(a) ? b : a));
     return {
-      left: clamp(left, MARGIN, viewport.width - MARGIN - width),
-      top: clamp(top, MARGIN, viewport.height - MARGIN - height),
+      left: clamp(best.left, MARGIN, viewport.width - MARGIN - width),
+      top: clamp(best.top, MARGIN, viewport.height - MARGIN - height),
       width,
       height,
+      isAbove: best.isAbove,
     };
   }
 
@@ -73,24 +95,28 @@ export function placePopover(
   const spaceAbove = anchor.top - 4 - MARGIN;
   let top: number;
   let height: number;
+  let isAbove = false;
   if (spaceBelow >= maxHeight) {
     top = anchor.bottom + 4;
     height = maxHeight;
   } else if (spaceAbove >= maxHeight) {
     height = maxHeight;
     top = anchor.top - 4 - height;
+    isAbove = true;
   } else if (spaceBelow >= spaceAbove) {
     height = Math.max(Math.min(maxHeight, MIN_HEIGHT), spaceBelow);
     top = anchor.bottom + 4;
   } else {
     height = Math.max(Math.min(maxHeight, MIN_HEIGHT), spaceAbove);
     top = anchor.top - 4 - height;
+    isAbove = true;
   }
   return {
     left: clamp(anchor.left, MARGIN, viewport.width - MARGIN - width),
     top: clamp(top, MARGIN, viewport.height - MARGIN - height),
     width,
     height,
+    isAbove,
   };
 }
 
@@ -257,6 +283,8 @@ export class RelatedPopover {
       { width: win?.innerWidth ?? 1024, height: win?.innerHeight ?? 768 },
       level === 0 || anchor.classList.contains("twohop-links-card")
     );
+    // The cards sit on the side of the preview nearest the anchor.
+    el.classList.toggle("is-above", placement.isAbove);
     Object.assign(el.style, {
       left: `${placement.left}px`,
       top: `${placement.top}px`,

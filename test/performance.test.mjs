@@ -1076,24 +1076,36 @@ test("the preview store reads each note once, two at a time, and skips unneeded 
   store.dispose();
 });
 
-test("a card's popup goes beside it and grows away from the nearer screen edge", () => {
+test("a card's popup opens off a free corner and barely covers its neighbours", () => {
   const viewport = { width: 1600, height: 1000 };
-  const card = (top) => ({ left: 300, right: 440, top, bottom: top + 220 });
+  const card = { left: 300, right: 440, top: 100, bottom: 320 };
 
-  const high = placePopover(card(100), viewport, true);
-  assert.equal(high.left, 448, "to the right of the card");
-  assert.equal(high.top, 100, "a card near the top grows downward");
+  const high = placePopover(card, viewport, true);
+  assert.deepEqual(
+    [high.left, high.top, high.isAbove],
+    [420, 300, false],
+    "bottom-right corner, overlapping it by 20 px"
+  );
+  // The card to the right (from x = 448) and the card below (from y = 328)
+  // are covered only in their corner.
+  assert.ok(high.top >= card.bottom - 20 && high.left >= card.right - 20);
 
-  const low = placePopover(card(700), viewport, true);
-  assert.equal(low.top + low.height, 920, "a card near the bottom grows upward");
-  assert.ok(low.top >= 8);
+  const low = placePopover(
+    { left: 300, right: 440, top: 700, bottom: 920 },
+    viewport,
+    true
+  );
+  assert.equal(low.isAbove, true, "near the bottom it opens upward");
+  assert.equal(low.top + low.height, 720, "off the top-right corner");
+  assert.equal(low.left, 420);
 
   const rightEdge = placePopover(
     { left: 1300, right: 1440, top: 100, bottom: 320 },
     viewport,
     true
   );
-  assert.equal(rightEdge.left + rightEdge.width, 1292, "left of a card at the right edge");
+  assert.equal(rightEdge.left + rightEdge.width, 1320, "off the left corner at the right edge");
+  assert.equal(rightEdge.isAbove, false);
 });
 
 test("a link's popup goes below or above the link, wherever there is room", () => {
@@ -1112,6 +1124,8 @@ test("a link's popup goes below or above the link, wherever there is room", () =
     false
   );
   assert.equal(above.top + above.height, 896);
+  assert.equal(above.isAbove, true);
+  assert.equal(below.isAbove, false);
 
   const middle = placePopover(
     { left: 500, right: 560, top: 450, bottom: 468 },
