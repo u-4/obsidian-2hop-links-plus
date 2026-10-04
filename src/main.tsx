@@ -129,6 +129,14 @@ export default class TwohopLinksPlugin extends Plugin {
       this.registerDomEvent(doc, "keydown", this.popover.onKeyDown, {
         capture: true,
       });
+      this.registerDomEvent(doc, "mousemove", this.titleStrip.onPointerMove, {
+        capture: true,
+        passive: true,
+      });
+      this.registerDomEvent(doc, "scroll", this.titleStrip.onScroll, {
+        capture: true,
+        passive: true,
+      });
       this.registerDomEvent(doc, "mouseover", this.titleStrip.onMouseOver);
       this.registerDomEvent(doc, "mouseout", this.titleStrip.onMouseOut);
     };

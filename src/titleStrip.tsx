@@ -5,7 +5,7 @@ import type TwohopLinksPlugin from "./main";
 import LinkView from "./ui/LinkView";
 
 const SHOW_DELAY_MS = 150;
-const HIDE_DELAY_MS = 2500;
+const HIDE_DELAY_MS = 1000;
 const MARGIN = 8;
 const GAP = 6;
 const STRIP_HEIGHT = 150;
@@ -60,6 +60,33 @@ export class TitleStrip {
     }
     this.cancelShow();
     if (this.el) this.scheduleHide();
+  };
+
+  /**
+   * Leaving the title or the row is also checked on every pointer move, so the
+   * row goes away even when a mouseout is missed (for example when the editor
+   * redraws the title while the row is showing).
+   */
+  readonly onPointerMove = (event: MouseEvent): void => {
+    if (!this.el) return;
+    const target = event.target;
+    const isOver =
+      target instanceof Node &&
+      (this.el.contains(target) || (this.title?.contains(target) ?? false));
+    if (isOver) {
+      this.cancelHide();
+    } else if (this.hideTimer === null) {
+      this.scheduleHide();
+    }
+  };
+
+  /** Scrolling the note moves the title away from the fixed row. */
+  readonly onScroll = (event: Event): void => {
+    if (!this.el || !this.title) return;
+    const target = event.target;
+    // Only the note holding the title; popups scrolling to their highlighted
+    // line, or other panes, leave the row alone.
+    if (target instanceof Node && target.contains(this.title)) this.hide();
   };
 
   hide(): void {
