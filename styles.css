@@ -473,6 +473,9 @@ body.theme-dark .twohop-links-sort-menu-scope {
       color-mix(in srgb, var(--text-muted) 55%, transparent)
     );
   border-radius: 50%;
+  /* Obsidian 1.13 on macOS gives clickable icons a squircle corner shape;
+     keep this button a true circle. */
+  corner-shape: round;
   box-shadow: 0 0 0 2px
       var(
         --twohop-elevator-bezel,
