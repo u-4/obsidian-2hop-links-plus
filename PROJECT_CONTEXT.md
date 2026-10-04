@@ -5,7 +5,7 @@
 - This is a public community fork based on `2hop-links-plus` 0.37.0.
 - The Git history is rooted in the upstream `0.37.0` tag; local improvements are
   maintained on `main`.
-- Version `0.49.2` is the current release (button kept round on Obsidian 1.13 macOS; title row hides about 1 s after the pointer leaves, detected from pointer moves, and at once on note scroll). The title-bar button
+- Version `0.49.3` is the current release (button kept round on Obsidian 1.13 macOS; title row hides about 0.75 s after the pointer leaves, detected from pointer moves, and at once on note scroll). The title-bar button
   (`scrollNavigation.ts`) switches icon by destination, has an elevator-style
   look (`--twohop-elevator-*`), and in side-pane mode reveals the 2-hop pane or
   restores the previous tab/collapsed sidebar (`togglePane` in `main.tsx`,

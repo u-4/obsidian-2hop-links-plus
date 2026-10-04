@@ -5,7 +5,7 @@ import type TwohopLinksPlugin from "./main";
 import LinkView from "./ui/LinkView";
 
 const SHOW_DELAY_MS = 150;
-const HIDE_DELAY_MS = 1000;
+const HIDE_DELAY_MS = 750;
 const MARGIN = 8;
 const GAP = 6;
 const STRIP_HEIGHT = 150;

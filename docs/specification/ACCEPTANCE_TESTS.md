@@ -210,7 +210,7 @@ Expected result:
   popup opens Hover Editor.
 - Pointing at the note title shows the notes linking to it as cards above the
   title. The row stays while the pointer is on it or a popup from it is open,
-  and goes away about 1 second after the pointer leaves, or at once when
+  and goes away about 0.75 seconds after the pointer leaves, or at once when
   the note scrolls.
 
 ## 8d. Popup title and options
