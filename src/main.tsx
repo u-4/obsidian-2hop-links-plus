@@ -46,6 +46,8 @@ import { LinkSignatureTracker } from "./linkSignature";
 import { PreviewStore } from "./cardPreview";
 import { HOVER_EDIT_SOURCE, RelatedPopover } from "./relatedPopover";
 import { setCardHoverHandler } from "./cardHover";
+import { BodyLinkHover } from "./linkHover";
+import { TitleStrip } from "./titleStrip";
 import type { CachedMetadata } from "obsidian";
 
 const CONTAINER_CLASS = "twohop-links-container";
@@ -62,6 +64,7 @@ export default class TwohopLinksPlugin extends Plugin {
   links: Links;
   previewStore: PreviewStore;
   popover: RelatedPopover;
+  titleStrip: TitleStrip;
 
   private readonly linkSignatures = new LinkSignatureTracker(() => ({
     frontmatterPropertyKeyAsTitle: this.settings.frontmatterPropertyKeyAsTitle,
@@ -109,6 +112,25 @@ export default class TwohopLinksPlugin extends Plugin {
       },
       leave: (cardEl) => this.popover.leave(cardEl),
     });
+    this.titleStrip = new TitleStrip(this);
+    const bodyLinks = new BodyLinkHover(this);
+    const watchPointer = (doc: Document) => {
+      this.registerDomEvent(doc, "mouseover", bodyLinks.onMouseOver, {
+        capture: true,
+      });
+      this.registerDomEvent(doc, "mouseout", bodyLinks.onMouseOut, {
+        capture: true,
+      });
+      this.registerDomEvent(doc, "mouseover", this.titleStrip.onMouseOver);
+      this.registerDomEvent(doc, "mouseout", this.titleStrip.onMouseOut);
+    };
+    watchPointer(document);
+    this.registerEvent(
+      this.app.workspace.on("window-open", (win) => watchPointer(win.doc))
+    );
+    this.registerEvent(
+      this.app.workspace.on("active-leaf-change", () => this.titleStrip.hide())
+    );
     // Clicking inside a light popup hands the note to the page preview
     // (Hover Editor when installed) for editing.
     this.registerHoverLinkSource(HOVER_EDIT_SOURCE, {
@@ -229,6 +251,7 @@ export default class TwohopLinksPlugin extends Plugin {
     this.disableLinksInMarkdown();
     this.previewStore.dispose();
     setCardHoverHandler(null);
+    this.titleStrip.hide();
     this.popover.dispose();
     console.log("unloading plugin");
   }

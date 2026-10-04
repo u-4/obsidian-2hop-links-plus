@@ -553,6 +553,38 @@ body.theme-dark .twohop-links-sort-menu-scope {
   height: 56px;
 }
 
+/* Cards above the note title while the title is pointed at. */
+.twohop-title-strip {
+  position: fixed;
+  z-index: var(--layer-popover);
+  box-sizing: border-box;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 132px;
+  justify-content: start;
+  gap: 8px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  pointer-events: none;
+}
+
+.twohop-title-strip::-webkit-scrollbar {
+  display: none;
+}
+
+.twohop-title-strip .twohop-links-box {
+  height: 100%;
+  padding: 8px;
+  pointer-events: auto;
+  box-shadow: var(--shadow-s);
+}
+
+.twohop-title-strip .twohop-links-box-media {
+  flex-basis: 48px;
+  height: 48px;
+}
+
 .twohop-popover-preview {
   flex: 1 1 auto;
   min-height: 0;

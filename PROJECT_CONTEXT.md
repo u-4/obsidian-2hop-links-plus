@@ -5,12 +5,12 @@
 - This is a public community fork based on `2hop-links-plus` 0.37.0.
 - The Git history is rooted in the upstream `0.37.0` tag; local improvements are
   maintained on `main`.
-- Version `0.46.3` is the current release (popups open off a card corner, PalmWiki-style, with a transparent card row, and scroll to and highlight the line linking back). Cmd+hover on a card opens a light
-  popup (related cards above a read-only preview), stackable, placed by free
-  space; clicking hands over to Hover Editor via hover-link source
-  `2hop-links-edit`. `notePreview.ts` and `relatedPopover.tsx` follow
-  NotePreview and CardPopover in `palmwiki-home/main.js` (1.7.1); keep them in
-  step. Body links and the title strip are planned for 0.47.0.
+- Version `0.47.0` is the current release. Cmd+hover on body links (Reading
+  view, Live Preview, Source mode) opens the related-cards popup; the plugin
+  takes those mouseover events at the document in the capture phase so
+  Obsidian's page preview does not also open (`linkHover.ts`). Pointing at the
+  inline title shows the notes linking to it above the title
+  (`titleStrip.tsx`). Popups scroll to and highlight the line linking back.
 - 0.45.x made cards lazy and PalmWiki-shaped. Cards load excerpts and images only
   near the viewport through a shared preview store (two reads at a time,
   remembered per note version), and use PalmWiki Home's card shape. The

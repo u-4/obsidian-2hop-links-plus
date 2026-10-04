@@ -365,7 +365,9 @@ export class Links {
       : this.getHeadwords(activeFile);
     const linkFrom = new Set<string>();
     if (this.settings.showBackwardConnectedLinks) {
-      for (const path of this.linkIndex.sourcesOf(fileLinkKey(activeFile.path))) {
+      for (const path of this.linkIndex.sourcesOf(
+        fileLinkKey(activeFile.path)
+      )) {
         linkFrom.add(path);
       }
       for (const path of canvasIndex?.inByTarget.get(activeFile.path) ?? []) {
@@ -398,7 +400,12 @@ export class Links {
     const twoHopLinks = result.groups.map((group) => {
       const { headword } = group;
       const header = headword.path
-        ? new FileEntity(activeFile.path, headword.path, undefined, headword.path)
+        ? new FileEntity(
+            activeFile.path,
+            headword.path,
+            undefined,
+            headword.path
+          )
         : new FileEntity(activeFile.path, headword.linkText);
       return new TwohopLink(
         header,
@@ -441,8 +448,9 @@ export class Links {
     const linkFrom = new Set<string>(
       this.linkIndex.sourcesOf(fileLinkKey(file.path))
     );
-    for (const path of this.cachedCanvasIndex?.index.inByTarget.get(file.path) ??
-      []) {
+    for (const path of this.cachedCanvasIndex?.index.inByTarget.get(
+      file.path
+    ) ?? []) {
       linkFrom.add(path);
     }
     const result = buildRelatedPages({
@@ -463,6 +471,36 @@ export class Links {
       isExcluded: (path) =>
         path === excludePath ||
         shouldExcludePath(path, this.settings.excludePaths),
+      sortOrder: this.settings.sortOrder,
+    });
+    return this.toLinkEntities(file, headwords, result.links.slice(0, limit));
+  }
+
+  /** Notes linking to this note, for the row above its title. */
+  getBacklinkEntities(file: TFile, limit = 30): FileEntity[] {
+    const linkFrom = new Set<string>(
+      this.linkIndex.sourcesOf(fileLinkKey(file.path))
+    );
+    for (const path of this.cachedCanvasIndex?.index.inByTarget.get(
+      file.path
+    ) ?? []) {
+      linkFrom.add(path);
+    }
+    const headwords = this.getHeadwords(file);
+    const result = buildRelatedPages({
+      activePath: file.path,
+      headwords,
+      linkTo: [],
+      linkFrom,
+      sourcesOf: () => [],
+      orderedKeysOf: (path) => {
+        const target = this.getFile(path);
+        return target && target.extension === "md"
+          ? this.linkIndex.orderedKeysOf(target)
+          : [];
+      },
+      infoOf: (path) => this.getPageInfo(path),
+      isExcluded: (path) => shouldExcludePath(path, this.settings.excludePaths),
       sortOrder: this.settings.sortOrder,
     });
     return this.toLinkEntities(file, headwords, result.links.slice(0, limit));
@@ -571,7 +609,9 @@ export class Links {
       return [];
     }
     const compare = compareRelatedPages(
-      this.settings.sortOrder === "related" ? "modifiedDesc" : this.settings.sortOrder
+      this.settings.sortOrder === "related"
+        ? "modifiedDesc"
+        : this.settings.sortOrder
     );
     const lists: PropertiesLinks[] = [];
     for (const tag of activeTags) {

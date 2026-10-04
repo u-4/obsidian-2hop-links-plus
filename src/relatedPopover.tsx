@@ -181,7 +181,11 @@ export class RelatedPopover {
     if (level === null || this.stack[level]?.anchor === anchor) return;
     if (Keymap.isModifier(event, "Mod")) {
       this.schedule(() => this.openFor(target), OPEN_DELAY_MS);
-    } else if (level === 0 && this.stack.length > 0) {
+    } else if (
+      level === 0 &&
+      this.stack.length > 0 &&
+      anchor.classList.contains("twohop-links-card")
+    ) {
       // While a popup is open, pointing at another card switches to it,
       // a little slower so crossing a card on the way does not.
       this.schedule(() => this.openFor(target), SWITCH_DELAY_MS);
@@ -195,6 +199,10 @@ export class RelatedPopover {
     // closes the stack when the pointer really goes away.
     if (anchor.closest(".twohop-popover")) return;
     if (this.stack.length > 0) this.scheduleClose();
+  }
+
+  isOpen(): boolean {
+    return this.stack.length > 0;
   }
 
   close(): void {
@@ -322,7 +330,7 @@ export class RelatedPopover {
     const placement = placePopover(
       anchor.getBoundingClientRect(),
       { width: win?.innerWidth ?? 1024, height: win?.innerHeight ?? 768 },
-      level === 0 || anchor.classList.contains("twohop-links-card")
+      anchor.classList.contains("twohop-links-card")
     );
     // The cards sit on the side of the preview nearest the anchor.
     el.classList.toggle("is-above", placement.isAbove);
@@ -382,9 +390,12 @@ export class RelatedPopover {
   private edit(entry: PopoverEntry): void {
     const rect = entry.el.getBoundingClientRect();
     const root = this.stack[0];
+    const doc = root?.anchor.ownerDocument;
     this.close();
-    if (!root?.anchor.isConnected) return;
-    const win = root.anchor.ownerDocument.defaultView ?? window;
+    if (!root || !doc) return;
+    // An editor link may have been redrawn meanwhile; the page then anchors it.
+    const targetEl = root.anchor.isConnected ? root.anchor : doc.body;
+    const win = doc.defaultView ?? window;
     const event = new win.MouseEvent("mouseover", {
       clientX: rect.left,
       clientY: rect.top - 20,
@@ -396,7 +407,7 @@ export class RelatedPopover {
       event,
       source: HOVER_EDIT_SOURCE,
       hoverParent: { hoverPopover: null },
-      targetEl: root.anchor,
+      targetEl,
       linktext: entry.file.path,
       sourcePath: "",
     });

@@ -197,6 +197,18 @@ Expected result:
   to a heading (`[[Note#Heading]]`) that heading. Only that line is
   highlighted, also inside bulleted lists.
 
+## 8c. Body links and the title (Mac)
+
+Expected result:
+
+- Holding Cmd over a link in the note body opens the light popup below the
+  link (above it near the bottom of the window), in Reading view, Live Preview
+  and Source mode. Hover Editor does not open at the same time; clicking in the
+  popup opens Hover Editor.
+- Pointing at the note title shows the notes linking to it as cards above the
+  title. The row stays while the pointer is on it or a popup from it is open,
+  and goes away about 2.5 seconds later.
+
 ## 9. Card search/filter
 
 Open `Active.md` and use the search box above the cards.
