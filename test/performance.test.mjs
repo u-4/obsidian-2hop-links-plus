@@ -18,6 +18,7 @@ import {
 import { buildRelatedPages, LARGE_GROUP_SIZE } from "../src/cosenseRelated.ts";
 import { LinkIndex } from "../src/linkIndex.ts";
 import { excerpt, findWebImage, PreviewStore } from "../src/cardPreview.ts";
+import { placePopover } from "../src/relatedPopover.tsx";
 import { migrateSortOrder } from "../src/settings/sortOptions.ts";
 import { chooseInlineRestoreLeaf } from "../src/inlineRestoreLeaf.ts";
 import { Links } from "../src/links.ts";
@@ -1073,4 +1074,61 @@ test("the preview store reads each note once, two at a time, and skips unneeded 
   await store.read(files[0], needed);
   assert.equal(reads, 4, "an edited note is read again");
   store.dispose();
+});
+
+test("a card's popup goes beside it and grows away from the nearer screen edge", () => {
+  const viewport = { width: 1600, height: 1000 };
+  const card = (top) => ({ left: 300, right: 440, top, bottom: top + 220 });
+
+  const high = placePopover(card(100), viewport, true);
+  assert.equal(high.left, 448, "to the right of the card");
+  assert.equal(high.top, 100, "a card near the top grows downward");
+
+  const low = placePopover(card(700), viewport, true);
+  assert.equal(low.top + low.height, 920, "a card near the bottom grows upward");
+  assert.ok(low.top >= 8);
+
+  const rightEdge = placePopover(
+    { left: 1300, right: 1440, top: 100, bottom: 320 },
+    viewport,
+    true
+  );
+  assert.equal(rightEdge.left + rightEdge.width, 1292, "left of a card at the right edge");
+});
+
+test("a link's popup goes below or above the link, wherever there is room", () => {
+  const viewport = { width: 1600, height: 1000 };
+  const below = placePopover(
+    { left: 500, right: 560, top: 100, bottom: 118 },
+    viewport,
+    false
+  );
+  assert.equal(below.top, 122);
+  assert.equal(below.height, 600);
+
+  const above = placePopover(
+    { left: 500, right: 560, top: 900, bottom: 918 },
+    viewport,
+    false
+  );
+  assert.equal(above.top + above.height, 896);
+
+  const middle = placePopover(
+    { left: 500, right: 560, top: 450, bottom: 468 },
+    { width: 1600, height: 800 },
+    false
+  );
+  assert.ok(middle.top >= 8 && middle.top + middle.height <= 792);
+  assert.ok(middle.height >= 240, "shrinks to the larger free space");
+});
+
+test("a hovered note's popup lists its Links without the open note", async () => {
+  const { app, files } = cosenseVault();
+  const links = new Links(app, createSettings());
+  const forD = links.getHoverLinks(files.get("D.md"), "A.md");
+  assert.deepEqual(titlesOf(forD), ["B", "C"], "equal ties fall back to the title");
+  const forB = links.getHoverLinks(files.get("B.md"), "A.md");
+  assert.deepEqual(titlesOf(forB).sort(), ["D", "F", "H"]);
+  assert.equal(links.getHoverLinks(files.get("B.md"), "A.md", 2).length, 2);
+  assert.equal(links.getPerformanceStats().resultComputations, 0, "no gather started");
 });

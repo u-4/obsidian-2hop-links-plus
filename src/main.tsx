@@ -26,7 +26,6 @@ import type { SortOrder } from "./settings/sortOptions";
 import {
   getRuntimeLeafParts,
   openLinkTextCompat,
-  unregisterHoverLinkSourceCompat,
 } from "./obsidianCompat";
 import {
   DebouncedTask,
@@ -45,6 +44,8 @@ import {
 import { chooseInlineRestoreLeaf } from "./inlineRestoreLeaf";
 import { LinkSignatureTracker } from "./linkSignature";
 import { PreviewStore } from "./cardPreview";
+import { HOVER_EDIT_SOURCE, RelatedPopover } from "./relatedPopover";
+import { setCardHoverHandler } from "./cardHover";
 import type { CachedMetadata } from "obsidian";
 
 const CONTAINER_CLASS = "twohop-links-container";
@@ -54,13 +55,13 @@ const HOST_RELATED_REGION_CLASS = "has-twohop-document-related-region";
 // Covers roughly one to two seconds on common 60-120 Hz displays.
 const MARKDOWN_HOST_RETRY_FRAMES = 120;
 const MODE_SWITCH_CHECK_DELAY_MS = 50;
-export const HOVER_LINK_ID = "2hop-links";
 
 export default class TwohopLinksPlugin extends Plugin {
   settings: TwohopPluginSettings;
   showLinksInMarkdown: boolean;
   links: Links;
   previewStore: PreviewStore;
+  popover: RelatedPopover;
 
   private readonly linkSignatures = new LinkSignatureTracker(() => ({
     frontmatterPropertyKeyAsTitle: this.settings.frontmatterPropertyKeyAsTitle,
@@ -70,9 +71,9 @@ export default class TwohopLinksPlugin extends Plugin {
   private lastGather: { key: string; result: GatheredLinks } | null = null;
   private displayedPaths = new Set<string>();
   private displayedLinkTexts = new Set<string>();
-  private readonly handleOpenFile = this.openFile.bind(this);
-  private readonly handleGetPreview = readPreview.bind(this);
-  private readonly handleGetTitle = getTitle.bind(this);
+  readonly openFileEntity = this.openFile.bind(this);
+  readonly getCardPreview = readPreview.bind(this);
+  readonly getCardTitle = getTitle.bind(this);
   private readonly handleSortOrderChange =
     this.setTemporarySortOrder.bind(this);
   private renderGeneration = 0;
@@ -93,6 +94,20 @@ export default class TwohopLinksPlugin extends Plugin {
     this.showLinksInMarkdown = true;
     this.links = new Links(this.app, this.settings);
     this.previewStore = new PreviewStore(this.app);
+    this.popover = new RelatedPopover(this);
+    setCardHoverHandler({
+      enter: (cardEl, fileEntity, event) => {
+        const file = this.resolveEntityFile(fileEntity);
+        if (file) this.popover.enter(cardEl, file, event);
+      },
+      leave: (cardEl) => this.popover.leave(cardEl),
+    });
+    // Clicking inside a light popup hands the note to the page preview
+    // (Hover Editor when installed) for editing.
+    this.registerHoverLinkSource(HOVER_EDIT_SOURCE, {
+      display: "2Hop Links（軽いプレビューから編集へ）",
+      defaultMod: false,
+    });
     this.scrollNavigator = new MarkdownScrollNavigator(async (view) => {
       const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
       if (activeView === view && !this.settings.showTwoHopLinksInSeparatePane) {
@@ -206,6 +221,8 @@ export default class TwohopLinksPlugin extends Plugin {
     this.links.cancelPendingCalculations();
     this.disableLinksInMarkdown();
     this.previewStore.dispose();
+    setCardHoverHandler(null);
+    this.popover.dispose();
     console.log("unloading plugin");
   }
 
@@ -453,6 +470,16 @@ export default class TwohopLinksPlugin extends Plugin {
     if (this.showLinksInMarkdown) {
       this.scheduleRefresh(false, this.getRefreshDebounceMs());
     }
+  }
+
+  private resolveEntityFile(fileEntity: FileEntity): TFile | null {
+    const file = fileEntity.targetPath
+      ? this.getFileByPath(fileEntity.targetPath)
+      : this.app.metadataCache.getFirstLinkpathDest(
+          removeBlockReference(fileEntity.linkText),
+          fileEntity.sourcePath
+        );
+    return file && file.extension === "md" ? file : null;
   }
 
   private getFileByPath(path: string): TFile | null {
@@ -889,9 +916,9 @@ export default class TwohopLinksPlugin extends Plugin {
         newLinks={gatheredLinks.newLinks}
         twoHopLinks={gatheredLinks.twoHopLinks}
         tagLinksList={gatheredLinks.tagLinksList}
-        onClick={this.handleOpenFile}
-        getPreview={this.handleGetPreview}
-        getTitle={this.handleGetTitle}
+        onClick={this.openFileEntity}
+        getPreview={this.getCardPreview}
+        getTitle={this.getCardTitle}
         app={this.app}
         showLinks={this.settings.showForwardConnectedLinks}
         showTwohopLinks={this.settings.showTwohopLinks}
@@ -925,7 +952,7 @@ export default class TwohopLinksPlugin extends Plugin {
     this.links.cancelActiveGather();
     this.removeTwohopLinks();
     this.removePaddingBottom();
-    unregisterHoverLinkSourceCompat(this.app.workspace, HOVER_LINK_ID);
+    this.popover?.close();
   }
 
   removeTwohopLinks(): void {

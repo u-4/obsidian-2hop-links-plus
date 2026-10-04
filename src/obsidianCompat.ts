@@ -50,7 +50,6 @@ type RuntimeWorkspace = {
     target?: OpenPaneTarget,
     openViewState?: OpenViewState
   ): Promise<void>;
-  unregisterHoverLinkSource?: (sourceId: string) => void;
 };
 
 function getRuntimeWorkspace(workspace: Workspace): RuntimeWorkspace {
@@ -70,11 +69,4 @@ export function openLinkTextCompat(
     target,
     openViewState
   );
-}
-
-export function unregisterHoverLinkSourceCompat(
-  workspace: Workspace,
-  sourceId: string
-): void {
-  getRuntimeWorkspace(workspace).unregisterHoverLinkSource?.(sourceId);
 }

@@ -175,6 +175,21 @@ Expected result:
   title-only until scrolled to.
 - Turning off `Show Image in the 2hop Links` hides the images.
 
+## 8b. Card popups (Mac)
+
+Hold Cmd and point at a card.
+
+Expected result:
+
+- A popup opens beside the card with up to 10 related cards in a row and the
+  note's preview below. Near the bottom of the window it grows upward.
+- Holding Cmd over a card or link inside the popup opens the next popup; a
+  link's popup opens below the link, or above it near the bottom.
+- Clicking inside the preview opens the note in Hover Editor; Escape closes
+  all popups. Without Cmd, pointing at a card does nothing.
+- Moving the pointer off a link or card inside a popup, while staying inside
+  the popup, keeps it open.
+
 ## 9. Card search/filter
 
 Open `Active.md` and use the search box above the cards.

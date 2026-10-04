@@ -1,8 +1,8 @@
 import React from "react";
 import { FileEntity } from "../model/FileEntity";
 import { removeBlockReference } from "../utils";
-import { App, Menu, HoverParent, HoverPopover } from "obsidian";
-import { HOVER_LINK_ID } from "../main";
+import { App, Menu } from "obsidian";
+import { getCardHoverHandler } from "../cardHover";
 import { GetCardPreview, OpenPaneTarget } from "../types";
 import type { CardPreview } from "../cardPreview";
 
@@ -26,15 +26,14 @@ interface LinkViewState {
   touchStart: number;
 }
 
-export default class LinkView
-  extends React.Component<LinkViewProps, LinkViewState>
-  implements HoverParent
-{
+export default class LinkView extends React.Component<
+  LinkViewProps,
+  LinkViewState
+> {
   private abortController: AbortController | null = null;
   private readonly cardRef = React.createRef<HTMLDivElement>();
   private observer: IntersectionObserver | null = null;
   private isNearViewport = false;
-  hoverPopover: HoverPopover | null;
   isMobile: boolean;
 
   constructor(props: LinkViewProps) {
@@ -187,19 +186,17 @@ export default class LinkView
     menu.showAtPosition({ x: clientX, y: clientY });
   };
 
-  onMouseOver = (e: React.MouseEvent): void => {
-    const targetEl = e.currentTarget as HTMLElement;
+  // Cmd+hover opens the related-cards popup instead of Obsidian's page preview.
+  onMouseEnter = (e: React.MouseEvent): void => {
+    getCardHoverHandler()?.enter(
+      e.currentTarget as HTMLElement,
+      this.props.fileEntity,
+      e.nativeEvent
+    );
+  };
 
-    if (targetEl.tagName !== "DIV") return;
-
-    this.props.app.workspace.trigger("hover-link", {
-      event: e.nativeEvent,
-      source: HOVER_LINK_ID,
-      hoverParent: this,
-      targetEl,
-      linktext: this.hoverLinkText(),
-      sourcePath: this.props.fileEntity.sourcePath,
-    });
+  onMouseLeave = (e: React.MouseEvent): void => {
+    getCardHoverHandler()?.leave(e.currentTarget as HTMLElement);
   };
 
   onMouseUpOrTouchEnd = async (
@@ -247,7 +244,8 @@ export default class LinkView
           this.setState({ mouseDown: false, dragging: false });
         }}
         onContextMenu={this.handleContextMenu}
-        onMouseOver={this.onMouseOver}
+        onMouseEnter={this.onMouseEnter}
+        onMouseLeave={this.onMouseLeave}
         draggable="true"
         onDragStart={(event) => {
           event.dataTransfer.setData(

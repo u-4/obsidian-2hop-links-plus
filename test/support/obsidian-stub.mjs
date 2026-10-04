@@ -16,3 +16,19 @@ export class TFile {
 export function normalizePath(path) {
   return path.replace(/\\/g, "/").replace(/\/{2,}/g, "/").replace(/^\//, "");
 }
+
+// Minimal stand-ins for UI classes imported by modules under test.
+export class Component {
+  load() {}
+  unload() {}
+}
+export const MarkdownRenderer = { render: async () => {} };
+export const Keymap = {
+  isModifier: (event, modifier) =>
+    modifier === "Mod" ? Boolean(event?.metaKey || event?.ctrlKey) : false,
+  isModEvent: (event) => Boolean(event?.metaKey || event?.ctrlKey),
+};
+export class Scope {
+  register() {}
+}
+export class Menu {}

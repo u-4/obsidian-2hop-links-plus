@@ -503,6 +503,76 @@ body.theme-dark .twohop-links-sort-menu-scope {
   stroke-width: 2.25;
 }
 
+/* Light popup on Cmd+hover over a card: related cards above a read-only
+   preview. It is placed on document.body, outside the related-links region. */
+.twohop-popover {
+  position: fixed;
+  z-index: var(--layer-popover);
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  box-shadow: var(--shadow-l);
+}
+
+.twohop-popover-cards {
+  display: grid;
+  flex: 0 0 auto;
+  grid-auto-flow: column;
+  grid-auto-columns: 132px;
+  gap: 8px;
+  padding: 10px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  border-bottom: 1px solid var(--background-modifier-border);
+  background: var(--cosense-popover-cards-bg, var(--background-secondary));
+}
+
+.twohop-popover-cards[hidden] {
+  display: none;
+}
+
+.twohop-popover-cards .twohop-links-box {
+  height: var(--cosense-popover-card-height, 150px);
+  padding: 8px;
+}
+
+.twohop-popover-cards .twohop-links-box-media {
+  flex-basis: 56px;
+  height: 56px;
+}
+
+.twohop-popover-preview {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 14px 18px;
+  font-size: var(--font-ui-small);
+  cursor: pointer;
+  /* Obsidian turns off text selection app-wide; allow copying from previews. */
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.twohop-popover-preview-title {
+  margin-bottom: 10px;
+  font-size: var(--font-ui-medium);
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.twohop-popover-preview-body img {
+  max-width: 100%;
+}
+
+.twohop-popover-preview-hint {
+  padding: 6px 0;
+  color: var(--text-muted);
+}
+
 /* @settings
 
 name: 2Hop Links Plus

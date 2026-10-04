@@ -393,28 +393,7 @@ export class Links {
     });
     throwIfCalculationCancelled(signal);
 
-    const linkTextByPath = new Map<string, string>();
-    for (const headword of headwords) {
-      if (headword.path && !linkTextByPath.has(headword.path)) {
-        linkTextByPath.set(headword.path, headword.linkText);
-      }
-    }
-    const links = result.links.map((page) =>
-      page.linkTo
-        ? new FileEntity(
-            page.path,
-            linkTextByPath.get(page.path) ?? filePathToLinkText(page.path),
-            undefined,
-            page.path
-          )
-        : // Opening a page that links here jumps to the line with that link.
-          new FileEntity(
-            page.path,
-            filePathToLinkText(page.path),
-            activeFile.path,
-            page.path
-          )
-    );
+    const links = this.toLinkEntities(activeFile, headwords, result.links);
 
     const twoHopLinks = result.groups.map((group) => {
       const { headword } = group;
@@ -450,6 +429,72 @@ export class Links {
 
     throwIfCalculationCancelled(signal);
     return { links, newLinks, twoHopLinks, tagLinksList };
+  }
+
+  /**
+   * The Links of a hovered note for its popup, without the note that is open.
+   * Uses the link index and any Canvas index already built; it never starts or
+   * cancels a gather, so the open note's view is not disturbed.
+   */
+  getHoverLinks(file: TFile, excludePath: string, limit = 10): FileEntity[] {
+    const headwords = this.getHeadwords(file);
+    const linkFrom = new Set<string>(
+      this.linkIndex.sourcesOf(fileLinkKey(file.path))
+    );
+    for (const path of this.cachedCanvasIndex?.index.inByTarget.get(file.path) ??
+      []) {
+      linkFrom.add(path);
+    }
+    const result = buildRelatedPages({
+      activePath: file.path,
+      headwords,
+      linkTo: headwords
+        .map((headword) => headword.path)
+        .filter((path): path is string => path !== null),
+      linkFrom,
+      sourcesOf: () => [],
+      orderedKeysOf: (path) => {
+        const target = this.getFile(path);
+        return target && target.extension === "md"
+          ? this.linkIndex.orderedKeysOf(target)
+          : [];
+      },
+      infoOf: (path) => this.getPageInfo(path),
+      isExcluded: (path) =>
+        path === excludePath ||
+        shouldExcludePath(path, this.settings.excludePaths),
+      sortOrder: this.settings.sortOrder,
+    });
+    return this.toLinkEntities(file, headwords, result.links.slice(0, limit));
+  }
+
+  private toLinkEntities(
+    activeFile: TFile,
+    headwords: Headword[],
+    pages: RelatedPage[]
+  ): FileEntity[] {
+    const linkTextByPath = new Map<string, string>();
+    for (const headword of headwords) {
+      if (headword.path && !linkTextByPath.has(headword.path)) {
+        linkTextByPath.set(headword.path, headword.linkText);
+      }
+    }
+    return pages.map((page) =>
+      page.linkTo
+        ? new FileEntity(
+            page.path,
+            linkTextByPath.get(page.path) ?? filePathToLinkText(page.path),
+            undefined,
+            page.path
+          )
+        : // Opening a page that links here jumps to the line with that link.
+          new FileEntity(
+            page.path,
+            filePathToLinkText(page.path),
+            activeFile.path,
+            page.path
+          )
+    );
   }
 
   /** The note's links in note order, one per target, without itself. */
