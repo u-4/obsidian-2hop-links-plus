@@ -28,10 +28,15 @@ export class BodyLinkHover {
   readonly onMouseOver = (event: MouseEvent): void => {
     const link = this.findLink(event.target);
     if (!link) return;
-    event.stopPropagation();
-    if (this.current === link) return;
+    if (this.current === link) {
+      event.stopPropagation();
+      return;
+    }
+    // Only links to notes are taken; PDFs, images and missing notes keep
+    // Obsidian's own behaviour.
     const resolved = this.resolve(link);
     if (!resolved) return;
+    event.stopPropagation();
     this.current = link;
     this.plugin.popover.enter(link, resolved.file, event, {
       heading: resolved.heading,

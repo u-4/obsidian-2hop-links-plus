@@ -1,10 +1,4 @@
-import {
-  MarkdownView,
-  Notice,
-  Plugin,
-  TFile,
-  WorkspaceLeaf,
-} from "obsidian";
+import { MarkdownView, Notice, Plugin, TFile, WorkspaceLeaf } from "obsidian";
 import React from "react";
 import ReactDOM from "react-dom";
 import { FileEntity } from "./model/FileEntity";
@@ -23,10 +17,7 @@ import type { GatheredLinks } from "./links";
 import { OpenPaneTarget } from "./types";
 import { isSortOrder } from "./settings/sortOptions";
 import type { SortOrder } from "./settings/sortOptions";
-import {
-  getRuntimeLeafParts,
-  openLinkTextCompat,
-} from "./obsidianCompat";
+import { getRuntimeLeafParts, openLinkTextCompat } from "./obsidianCompat";
 import {
   DebouncedTask,
   DEFAULT_REFRESH_DEBOUNCE_MS,
@@ -98,8 +89,14 @@ export default class TwohopLinksPlugin extends Plugin {
     this.links = new Links(this.app, this.settings);
     this.previewStore = new PreviewStore(this.app);
     this.popover = new RelatedPopover(this);
+    // Hover features are for a mouse or trackpad; touch screens emulate
+    // mouseover on tap, which would open popups and the title row.
+    const canHover = (doc: Document) =>
+      doc.defaultView?.matchMedia("(hover: hover) and (pointer: fine)")
+        .matches ?? false;
     setCardHoverHandler({
       enter: (cardEl, fileEntity, event) => {
+        if (!canHover(cardEl.ownerDocument)) return;
         const file = this.resolveEntityFile(fileEntity);
         if (!file) return;
         const revealPath =
@@ -115,6 +112,7 @@ export default class TwohopLinksPlugin extends Plugin {
     this.titleStrip = new TitleStrip(this);
     const bodyLinks = new BodyLinkHover(this);
     const watchPointer = (doc: Document) => {
+      if (!canHover(doc)) return;
       this.registerDomEvent(doc, "mouseover", bodyLinks.onMouseOver, {
         capture: true,
       });
@@ -368,7 +366,10 @@ export default class TwohopLinksPlugin extends Plugin {
     return false;
   }
 
-  private rememberDisplayedResult(activeFile: TFile, result: GatheredLinks): void {
+  private rememberDisplayedResult(
+    activeFile: TFile,
+    result: GatheredLinks
+  ): void {
     const paths = new Set<string>([activeFile.path]);
     const linkTexts = new Set<string>();
     const add = (entity: FileEntity) => {
@@ -446,11 +447,7 @@ export default class TwohopLinksPlugin extends Plugin {
     const message =
       `Link index builds ${stats.builds}, updated notes ${stats.patches}, ` +
       `result calculations ${stats.resultComputations}, result hits ${stats.resultCacheHits}, ` +
-      `joined ${stats.joinedComputations}, cancelled ${
-        stats.gatherCancellations
-      }, last index build ${stats.lastBuildMs} ms, last result ${
-        stats.lastGatherMs
-      } ms`;
+      `joined ${stats.joinedComputations}, cancelled ${stats.gatherCancellations}, last index build ${stats.lastBuildMs} ms, last result ${stats.lastGatherMs} ms`;
     console.info("2Hop Links performance statistics", stats);
     new Notice(message, 10000);
   }
@@ -920,9 +917,7 @@ export default class TwohopLinksPlugin extends Plugin {
 
   /** Unmounts results left in the hosts of the modes that are not shown. */
   private removeOtherModeContainers(markdownView: MarkdownView): void {
-    const currentHosts = new Set(
-      this.getContainerHostElements(markdownView)
-    );
+    const currentHosts = new Set(this.getContainerHostElements(markdownView));
     for (const host of getAllMarkdownHostElements(markdownView.containerEl)) {
       if (currentHosts.has(host)) continue;
       const container = this.findDirectContainer(host);

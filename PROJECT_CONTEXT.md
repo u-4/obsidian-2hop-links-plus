@@ -5,7 +5,7 @@
 - This is a public community fork based on `2hop-links-plus` 0.37.0.
 - The Git history is rooted in the upstream `0.37.0` tag; local improvements are
   maintained on `main`.
-- Version `0.47.0` is the current release. Cmd+hover on body links (Reading
+- Version `0.47.1` is the current release (0.47.0 limited to hover-capable pointers and to links to notes). Cmd+hover on body links (Reading
   view, Live Preview, Source mode) opens the related-cards popup; the plugin
   takes those mouseover events at the document in the capture phase so
   Obsidian's page preview does not also open (`linkHover.ts`). Pointing at the
