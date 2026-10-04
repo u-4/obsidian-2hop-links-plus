@@ -18,7 +18,11 @@ import {
 import { buildRelatedPages, LARGE_GROUP_SIZE } from "../src/cosenseRelated.ts";
 import { LinkIndex } from "../src/linkIndex.ts";
 import { excerpt, findWebImage, PreviewStore } from "../src/cardPreview.ts";
-import { placePopover } from "../src/relatedPopover.tsx";
+import {
+  cardsBelowPreview,
+  hoverOpenDelay,
+  placePopover,
+} from "../src/relatedPopover.tsx";
 import { migrateSortOrder } from "../src/settings/sortOptions.ts";
 import { chooseInlineRestoreLeaf } from "../src/inlineRestoreLeaf.ts";
 import { Links } from "../src/links.ts";
@@ -1145,4 +1149,23 @@ test("a hovered note's popup lists its Links without the open note", async () =>
   assert.deepEqual(titlesOf(forB).sort(), ["D", "F", "H"]);
   assert.equal(links.getHoverLinks(files.get("B.md"), "A.md", 2).length, 2);
   assert.equal(links.getPerformanceStats().resultComputations, 0, "no gather started");
+});
+
+test("hover-only popups wait for a resting pointer and stay away while typing or dragging", () => {
+  const base = { trigger: "hover", isMod: false, buttons: 0, msSinceTyping: 5000 };
+  assert.equal(hoverOpenDelay(base), 300);
+  assert.equal(hoverOpenDelay({ ...base, buttons: 1 }), null, "dragging or selecting");
+  assert.equal(hoverOpenDelay({ ...base, msSinceTyping: 400 }), null, "just typed");
+  assert.equal(hoverOpenDelay({ ...base, isMod: true, msSinceTyping: 0 }), 60, "Cmd is quick");
+  assert.equal(hoverOpenDelay({ ...base, trigger: "mod" }), null, "default needs Cmd");
+  assert.equal(hoverOpenDelay({ ...base, trigger: "mod", isMod: true }), 60);
+});
+
+test("related cards sit above, below, or on the side away from the pointer", () => {
+  assert.equal(cardsBelowPreview("above", false), false);
+  assert.equal(cardsBelowPreview("above", true), false);
+  assert.equal(cardsBelowPreview("below", false), true);
+  assert.equal(cardsBelowPreview("below", true), true);
+  assert.equal(cardsBelowPreview("auto", false), true, "popup below the pointer: cards at its far bottom");
+  assert.equal(cardsBelowPreview("auto", true), false, "popup above the pointer: cards at its far top");
 });

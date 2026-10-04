@@ -209,6 +209,20 @@ Expected result:
   title. The row stays while the pointer is on it or a popup from it is open,
   and goes away about 2.5 seconds later.
 
+## 8d. Popup title and options
+
+Expected result:
+
+- The popup's note name stays at the top on one line while the preview
+  scrolls.
+- With `Light preview trigger` set to `Hover only`, resting the pointer on a
+  card or note link opens the popup after about 0.3 s; scrolling content
+  under a still pointer, holding a mouse button, or typing just before does
+  not. Cmd/Ctrl still opens at once. With the default, plain hover opens
+  nothing.
+- `Related cards in the light preview` puts the cards above the preview,
+  below it, or (Auto) on the side away from the pointer.
+
 ## 9. Card search/filter
 
 Open `Active.md` and use the search box above the cards.

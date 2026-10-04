@@ -77,6 +77,7 @@ export class NotePreview {
     const title = doc.createElement("div");
     title.className = "twohop-popover-preview-title";
     title.textContent = file.basename;
+    title.title = file.basename;
     const content = doc.createElement("div");
     content.className = "twohop-popover-preview-body";
     this.el.append(title, content);

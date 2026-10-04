@@ -40,8 +40,8 @@ Cosense / Scrapbox に近づけるため、Cosense と同じ関連ページの�
 `2hop-links-plus` を引き継ぐため、元の 2Hop Links Plus と同時にはインストールできず、
 置き換えとして動作します。導入前に既存プラグインフォルダをバックアップしてください。
 
-最新の公開版は `0.47.1` です。カードや本文のリンクに Cmd を押しながらマウスを合わせると、関連カードと
-ノートの中身を出す軽い小窓が開きます。タイトルに合わせると、このノートへリンクしているノートが並びます。
+最新の公開版は `0.48.0` です。軽い小窓はノート名を上に残し、開き方（Cmd/Ctrl + ホバー、またはホバーのみ）と
+関連カードの位置（上・下・自動）を設定で選べます。
 
 設定の `Tab switch calculation delay (ms)` は通常のタブ切替後の待ち時間です
 （既定 `200` ms）。コマンドパレットの `Show performance statistics` と
@@ -117,9 +117,9 @@ This is not an official release of the upstream project. It intentionally keeps
 the `2hop-links-plus` plugin ID, so it replaces the upstream plugin rather than
 installing alongside it. Back up your existing plugin directory before trying it.
 
-The latest release is `0.47.1`. Cmd+hover on a card or a body link opens a light
-popup with related cards and a preview; pointing at the title lists the notes
-linking to the note.
+The latest release is `0.48.0`. Light popups keep the note name at the top,
+and settings choose how they open (Cmd/Ctrl + hover or hover only) and where
+the related cards sit (above, below, auto).
 
 `Tab switch calculation delay (ms)` controls the normal post-switch delay and
 defaults to `200` ms. The command palette actions `Show performance statistics`

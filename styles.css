@@ -517,7 +517,7 @@ body.theme-dark .twohop-links-sort-menu-scope {
   pointer-events: none;
 }
 
-.twohop-popover.is-above {
+.twohop-popover.is-cards-below {
   flex-direction: column-reverse;
 }
 
@@ -602,11 +602,21 @@ body.theme-dark .twohop-links-sort-menu-scope {
   -webkit-user-select: text;
 }
 
+/* The note's name stays at the top while the preview scrolls, on one line
+   and about the size of a card title. */
 .twohop-popover-preview-title {
-  margin-bottom: 10px;
+  position: sticky;
+  top: -14px;
+  z-index: 1;
+  margin: -14px -18px 8px;
+  padding: 8px 18px;
+  overflow: hidden;
+  border-bottom: 1px solid var(--background-modifier-border);
+  background: var(--background-primary);
   font-size: var(--font-ui-medium);
-  font-weight: 700;
-  overflow-wrap: anywhere;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .twohop-popover-preview-body img {

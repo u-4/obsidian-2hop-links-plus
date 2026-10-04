@@ -24,6 +24,8 @@ export interface TwohopPluginSettings {
   includeBodyInCardSearch: boolean;
   refreshDebounceMs: number;
   frontmatterPropertyKeyAsTitle: string;
+  popupTrigger: "mod" | "hover";
+  popupCardsPosition: "above" | "below" | "auto";
   [key: string]: boolean | string | string[] | number | undefined;
 }
 
@@ -57,6 +59,18 @@ export class TwohopSettingTab extends PluginSettingTab {
       "Used when a 2-hop links view is opened. The sort menu in the view changes only the current display temporarily.",
       "sortOrder",
       SORT_ORDER_OPTIONS
+    );
+    this.createDropdownSetting(
+      "Light preview trigger",
+      "How the light preview with related cards opens over cards and note links (on devices with a mouse or trackpad).",
+      "popupTrigger",
+      { mod: "Cmd/Ctrl + hover", hover: "Hover only" }
+    );
+    this.createDropdownSetting(
+      "Related cards in the light preview",
+      "Where the related cards sit. Auto keeps the preview next to the pointer and puts the cards on the far side.",
+      "popupCardsPosition",
+      { above: "Above the preview", below: "Below the preview", auto: "Auto" }
     );
     this.createToggleSetting("Show Links", "", "showForwardConnectedLinks");
     this.createToggleSetting(
@@ -204,9 +218,7 @@ export class TwohopSettingTab extends PluginSettingTab {
       .addText((text) => {
         text.setValue((this.plugin.settings[key] as number).toString());
         text.inputEl.addEventListener("blur", async (event) => {
-          const parsedValue = Number(
-            (event.target as HTMLInputElement).value
-          );
+          const parsedValue = Number((event.target as HTMLInputElement).value);
           this.plugin.settings[key] =
             key === "refreshDebounceMs"
               ? Number.isFinite(parsedValue)

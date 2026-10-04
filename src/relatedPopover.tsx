@@ -19,6 +19,43 @@ const MIN_HEIGHT = 240;
 const OPEN_DELAY_MS = 60;
 const SWITCH_DELAY_MS = 150;
 const CLOSE_DELAY_MS = 300;
+// Hover-only mode: open after the pointer rests this long on a card or link,
+// and not right after typing.
+export const HOVER_REST_MS = 300;
+export const TYPING_PAUSE_MS = 1000;
+
+export type PopupTrigger = "mod" | "hover";
+export type PopupCardsPosition = "above" | "below" | "auto";
+
+/**
+ * How long to wait before opening a popup for the pointed-at anchor, or null
+ * to not open. Cmd/Ctrl opens quickly in both modes. Hover-only mode opens
+ * when the pointer rests (each move restarts the wait), never while a mouse
+ * button is down (dragging, selecting) or just after typing.
+ */
+export function hoverOpenDelay(input: {
+  trigger: PopupTrigger;
+  isMod: boolean;
+  buttons: number;
+  msSinceTyping: number;
+}): number | null {
+  if (input.isMod) return OPEN_DELAY_MS;
+  if (input.trigger !== "hover") return null;
+  if (input.buttons !== 0) return null;
+  if (input.msSinceTyping < TYPING_PAUSE_MS) return null;
+  return HOVER_REST_MS;
+}
+
+/** Whether the related cards go below the preview. */
+export function cardsBelowPreview(
+  position: PopupCardsPosition,
+  isAbove: boolean
+): boolean {
+  if (position === "below") return true;
+  // Auto keeps the preview next to the pointer and the cards on the far side.
+  if (position === "auto") return !isAbove;
+  return false;
+}
 
 export interface Rect {
   left: number;
@@ -158,6 +195,55 @@ export class RelatedPopover {
     });
   }
 
+  private lastTypedAt = 0;
+  private lastButtons = 0;
+
+  private get trigger(): PopupTrigger {
+    return this.plugin.settings.popupTrigger === "hover" ? "hover" : "mod";
+  }
+
+  /** Typing (not Cmd/Ctrl alone) holds hover-only popups back for a moment. */
+  readonly onKeyDown = (event: KeyboardEvent): void => {
+    if (["Meta", "Control", "Shift", "Alt"].includes(event.key)) return;
+    this.lastTypedAt = Date.now();
+    this.cancelOpen();
+  };
+
+  /**
+   * Hover-only mode opens a popup once the pointer rests on the anchor. Only
+   * real pointer movement counts, so content scrolling under a still pointer
+   * or a new note appearing under it opens nothing.
+   */
+  readonly onPointerMove = (event: MouseEvent): void => {
+    this.lastButtons = event.buttons;
+    if (this.trigger !== "hover") return;
+    const target = this.hovered;
+    if (!target || !(event.target instanceof Node)) return;
+    if (!target.anchor.contains(event.target)) return;
+    const level = this.levelToOpen(target.anchor);
+    if (level === null || this.stack[level]?.anchor === target.anchor) return;
+    const delay = hoverOpenDelay({
+      trigger: this.trigger,
+      isMod: Keymap.isModifier(event, "Mod"),
+      buttons: event.buttons,
+      msSinceTyping: Date.now() - this.lastTypedAt,
+    });
+    if (delay === null) {
+      this.cancelOpen();
+      return;
+    }
+    this.schedule(() => {
+      if (
+        this.hovered !== target ||
+        this.lastButtons !== 0 ||
+        Date.now() - this.lastTypedAt < TYPING_PAUSE_MS
+      ) {
+        return;
+      }
+      this.openFor(target);
+    }, delay);
+  };
+
   private readonly onKey = (event: KeyboardEvent) => {
     if (event.key !== "Meta" && event.key !== "Control") return;
     const target = this.hovered;
@@ -182,6 +268,7 @@ export class RelatedPopover {
     if (Keymap.isModifier(event, "Mod")) {
       this.schedule(() => this.openFor(target), OPEN_DELAY_MS);
     } else if (
+      this.trigger === "mod" &&
       level === 0 &&
       this.stack.length > 0 &&
       anchor.classList.contains("twohop-links-card")
@@ -333,7 +420,13 @@ export class RelatedPopover {
       anchor.classList.contains("twohop-links-card")
     );
     // The cards sit on the side of the preview nearest the anchor.
-    el.classList.toggle("is-above", placement.isAbove);
+    el.classList.toggle(
+      "is-cards-below",
+      cardsBelowPreview(
+        this.plugin.settings.popupCardsPosition ?? "above",
+        placement.isAbove
+      )
+    );
     Object.assign(el.style, {
       left: `${placement.left}px`,
       top: `${placement.top}px`,

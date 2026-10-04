@@ -22,6 +22,8 @@ export const DEFAULT_SETTINGS: TwohopPluginSettings = {
   includeBodyInCardSearch: true,
   refreshDebounceMs: 200,
   frontmatterPropertyKeyAsTitle: "",
+  popupTrigger: "mod",
+  popupCardsPosition: "above",
 };
 
 export async function loadSettings(
