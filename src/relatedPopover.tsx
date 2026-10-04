@@ -242,7 +242,7 @@ export class RelatedPopover {
       if (event.defaultPrevented) return;
       if ((event.target as HTMLElement | null)?.closest?.("a")) return;
       if (doc.defaultView?.getSelection()?.toString()) return;
-      this.edit(entry, event);
+      this.edit(entry);
     });
 
     if (!this.isScoped) {
@@ -303,14 +303,31 @@ export class RelatedPopover {
     return file instanceof TFile && file.extension === "md" ? file : null;
   }
 
-  private edit(entry: PopoverEntry, event: MouseEvent): void {
+  /**
+   * Hands the note to the page preview (Hover Editor) at the popup's place.
+   * The anchor is the first popup's card, which stays in the document after
+   * the popups close. The event carries Cmd so the hand-over also works when
+   * the page preview setting requires Cmd for this source, and its position
+   * is 20 px above the popup because Hover Editor opens 20 px below it.
+   */
+  private edit(entry: PopoverEntry): void {
+    const rect = entry.el.getBoundingClientRect();
+    const root = this.stack[0];
     this.close();
-    if (!entry.anchor.isConnected) return;
+    if (!root?.anchor.isConnected) return;
+    const win = root.anchor.ownerDocument.defaultView ?? window;
+    const event = new win.MouseEvent("mouseover", {
+      clientX: rect.left,
+      clientY: rect.top - 20,
+      metaKey: true,
+      ctrlKey: true,
+      bubbles: true,
+    });
     this.plugin.app.workspace.trigger("hover-link", {
       event,
       source: HOVER_EDIT_SOURCE,
       hoverParent: { hoverPopover: null },
-      targetEl: entry.anchor,
+      targetEl: root.anchor,
       linktext: entry.file.path,
       sourcePath: "",
     });
