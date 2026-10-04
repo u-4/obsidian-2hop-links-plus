@@ -8,7 +8,7 @@ import React from "react";
 import ReactDOM from "react-dom";
 import type TwohopLinksPlugin from "./main";
 import { FileEntity } from "./model/FileEntity";
-import { NotePreview } from "./notePreview";
+import { NotePreview, PreviewFocus } from "./notePreview";
 import LinkView from "./ui/LinkView";
 
 export const HOVER_EDIT_SOURCE = "2hop-links-edit";
@@ -66,7 +66,11 @@ export function placePopover(
       { left: anchor.right - o, top: anchor.bottom - o, isAbove: false },
       { left: anchor.right - o, top: anchor.top + o - height, isAbove: true },
       { left: anchor.left + o - width, top: anchor.bottom - o, isAbove: false },
-      { left: anchor.left + o - width, top: anchor.top + o - height, isAbove: true },
+      {
+        left: anchor.left + o - width,
+        top: anchor.top + o - height,
+        isAbove: true,
+      },
     ];
     const room = (corner: { left: number; top: number }) =>
       Math.max(
@@ -131,6 +135,9 @@ interface PopoverEntry {
 interface HoverTarget {
   anchor: HTMLElement;
   file: TFile;
+  /** Where the anchor points to inside the file, as a note path or heading. */
+  revealPath?: string;
+  heading?: string;
 }
 
 export class RelatedPopover {
@@ -160,18 +167,24 @@ export class RelatedPopover {
   };
 
   /** A card or link under the pointer. Cmd opens its popup. */
-  enter(anchor: HTMLElement, file: TFile, event: MouseEvent): void {
-    this.hovered = { anchor, file };
+  enter(
+    anchor: HTMLElement,
+    file: TFile,
+    event: MouseEvent,
+    hint: { revealPath?: string; heading?: string } = {}
+  ): void {
+    const target: HoverTarget = { anchor, file, ...hint };
+    this.hovered = target;
     this.cancelClose();
     this.listen(anchor.ownerDocument);
     const level = this.levelToOpen(anchor);
     if (level === null || this.stack[level]?.anchor === anchor) return;
     if (Keymap.isModifier(event, "Mod")) {
-      this.schedule(() => this.openFor({ anchor, file }), OPEN_DELAY_MS);
+      this.schedule(() => this.openFor(target), OPEN_DELAY_MS);
     } else if (level === 0 && this.stack.length > 0) {
       // While a popup is open, pointing at another card switches to it,
       // a little slower so crossing a card on the way does not.
-      this.schedule(() => this.openFor({ anchor, file }), SWITCH_DELAY_MS);
+      this.schedule(() => this.openFor(target), SWITCH_DELAY_MS);
     }
   }
 
@@ -213,10 +226,27 @@ export class RelatedPopover {
     if (!target.anchor.isConnected) return;
     const level = this.levelToOpen(target.anchor);
     if (level === null) return;
-    this.open(level, target.anchor, target.file);
+    // The preview shows where the note links back to where the pointer came
+    // from: the link the card stands for, the popup's note, or the open note.
+    const contextPath =
+      level > 0
+        ? this.stack[level - 1]?.file.path
+        : this.plugin.app.workspace.getActiveFile()?.path;
+    const linkTargets = [target.revealPath, contextPath].filter(
+      (path): path is string => Boolean(path) && path !== target.file.path
+    );
+    this.open(level, target.anchor, target.file, {
+      heading: target.heading,
+      linkTargets,
+    });
   }
 
-  private open(level: number, anchor: HTMLElement, file: TFile): void {
+  private open(
+    level: number,
+    anchor: HTMLElement,
+    file: TFile,
+    focus: PreviewFocus
+  ): void {
     this.closeFrom(level);
     const doc = anchor.ownerDocument;
     this.listen(doc);
@@ -254,7 +284,18 @@ export class RelatedPopover {
         if (!link) return;
         event.stopPropagation();
         const target = this.linkTarget(link, file);
-        if (target) this.enter(link, target, event);
+        if (target) {
+          const href = link.dataset.href || link.getAttribute("href") || "";
+          // The innermost heading of "Note#A#B"; block links ("#^id") have none.
+          const heading =
+            href
+              .split("|")[0]
+              .split("#")
+              .slice(1)
+              .pop()
+              ?.replace(/^\^.*/, "") ?? "";
+          this.enter(link, target, event, { heading: heading || undefined });
+        }
       },
       true
     );
@@ -292,7 +333,7 @@ export class RelatedPopover {
       height: `${placement.height}px`,
     });
     this.renderCards(entry);
-    void preview.show(file);
+    void preview.show(file, focus);
   }
 
   private renderCards(entry: PopoverEntry): void {

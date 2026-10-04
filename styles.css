@@ -581,6 +581,12 @@ body.theme-dark .twohop-links-sort-menu-scope {
   max-width: 100%;
 }
 
+.twohop-popover-focus {
+  border-radius: 4px;
+  background: var(--text-highlight-bg);
+  box-shadow: 0 0 0 3px var(--text-highlight-bg);
+}
+
 .twohop-popover-preview-hint {
   padding: 6px 0;
   color: var(--text-muted);

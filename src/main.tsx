@@ -98,7 +98,14 @@ export default class TwohopLinksPlugin extends Plugin {
     setCardHoverHandler({
       enter: (cardEl, fileEntity, event) => {
         const file = this.resolveEntityFile(fileEntity);
-        if (file) this.popover.enter(cardEl, file, event);
+        if (!file) return;
+        const revealPath =
+          fileEntity.targetPathToReveal ??
+          (fileEntity.linkTextToReveal
+            ? this.resolveFilePath(fileEntity.linkTextToReveal, file.path) ??
+              undefined
+            : undefined);
+        this.popover.enter(cardEl, file, event, { revealPath });
       },
       leave: (cardEl) => this.popover.leave(cardEl),
     });

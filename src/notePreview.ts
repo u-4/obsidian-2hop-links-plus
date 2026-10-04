@@ -6,6 +6,14 @@ import { App, Component, MarkdownRenderer, TFile } from "obsidian";
 
 const PREVIEW_CHARS = 20000;
 
+/** What to scroll to and highlight once a preview is drawn. */
+export interface PreviewFocus {
+  /** Heading named after "#" in the link, if any. */
+  heading?: string;
+  /** Paths of notes; the first rendered link to one of them is shown. */
+  linkTargets: string[];
+}
+
 /** The note body without frontmatter, cut to PREVIEW_CHARS. */
 export function previewMarkdown(body: string): { text: string; cut: boolean } {
   let text = String(body).replace(/^\uFEFF/, "");
@@ -54,7 +62,7 @@ export class NotePreview {
     });
   }
 
-  async show(file: TFile): Promise<void> {
+  async show(file: TFile, focus?: PreviewFocus): Promise<void> {
     const token = ++this.token;
     const doc = this.el.ownerDocument;
     let body: string | null = null;
@@ -82,7 +90,13 @@ export class NotePreview {
     component.load();
     this.component = component;
     try {
-      await MarkdownRenderer.render(this.app, text, content, file.path, component);
+      await MarkdownRenderer.render(
+        this.app,
+        text,
+        content,
+        file.path,
+        component
+      );
     } catch {
       content.textContent = text;
     }
@@ -93,6 +107,51 @@ export class NotePreview {
       more.textContent = "（長いノートのため途中まで表示しています）";
       this.el.append(more);
     }
+    if (focus) this.reveal(content, file, focus);
+  }
+
+  /**
+   * Scrolls to and highlights the linked heading, or else the first block with
+   * a link to one of the focus notes. Only the rendered links are examined.
+   */
+  private reveal(content: HTMLElement, file: TFile, focus: PreviewFocus): void {
+    let target: HTMLElement | null = null;
+    if (focus.heading) {
+      const wanted = normalizeHeading(focus.heading);
+      target =
+        Array.from(
+          content.querySelectorAll<HTMLElement>("h1, h2, h3, h4, h5, h6")
+        ).find(
+          (heading) => normalizeHeading(heading.textContent ?? "") === wanted
+        ) ?? null;
+    }
+    if (!target && focus.linkTargets.length > 0) {
+      const targets = new Set(focus.linkTargets);
+      for (const link of Array.from(
+        content.querySelectorAll<HTMLAnchorElement>("a.internal-link")
+      )) {
+        const href = (link.dataset.href || link.getAttribute("href") || "")
+          .split("#")[0]
+          .split("|")[0];
+        const dest = href
+          ? this.app.metadataCache.getFirstLinkpathDest(href, file.path)
+          : null;
+        if (dest && targets.has(dest.path)) {
+          link.classList.add("twohop-popover-focus-link");
+          target = lineAround(link);
+          break;
+        }
+      }
+    }
+    if (!target) return;
+    target.classList.add("twohop-popover-focus");
+    // Keep the highlighted part about a third of the way down the preview.
+    const elRect = this.el.getBoundingClientRect();
+    const targetRect = target.getBoundingClientRect();
+    this.el.scrollTop = Math.max(
+      0,
+      this.el.scrollTop + targetRect.top - elRect.top - this.el.clientHeight / 3
+    );
   }
 
   dispose(): void {
@@ -105,4 +164,66 @@ export class NotePreview {
     this.component = null;
     while (this.el.firstChild) this.el.firstChild.remove();
   }
+}
+
+function normalizeHeading(text: string): string {
+  return text.replace(/\s+/g, " ").trim().toLowerCase();
+}
+
+/**
+ * The line holding a link: within its paragraph, list item or table cell,
+ * only the part between line breaks (<br>, a newline in the text, a nested
+ * list or the list bullet), wrapped in a span. Headings are taken whole.
+ */
+function lineAround(link: HTMLElement): HTMLElement {
+  const block = link.closest("li, td, th, h1, h2, h3, h4, h5, h6, p");
+  if (!(block instanceof HTMLElement)) return link;
+  if (/^H\d$/.test(block.tagName)) return block;
+  const isBoundary = (node: Node) =>
+    node.nodeName === "BR" ||
+    node.nodeName === "UL" ||
+    node.nodeName === "OL" ||
+    (node instanceof HTMLElement &&
+      (node.classList.contains("list-bullet") ||
+        node.classList.contains("list-collapse-indicator")));
+  let child: Node = link;
+  while (child.parentNode && child.parentNode !== block)
+    child = child.parentNode;
+
+  let first: Node = child;
+  for (;;) {
+    const prev = first.previousSibling;
+    if (!prev || isBoundary(prev)) break;
+    if (prev.nodeType === Node.TEXT_NODE && prev.textContent?.includes("\n")) {
+      const text = prev as Text;
+      const at = (text.textContent ?? "").lastIndexOf("\n") + 1;
+      first = at < text.length ? text.splitText(at) : text.nextSibling ?? first;
+      break;
+    }
+    first = prev;
+  }
+  let last: Node = child;
+  for (;;) {
+    const next = last.nextSibling;
+    if (!next || isBoundary(next)) break;
+    if (next.nodeType === Node.TEXT_NODE && next.textContent?.includes("\n")) {
+      const text = next as Text;
+      const at = (text.textContent ?? "").indexOf("\n");
+      if (at > 0) {
+        text.splitText(at);
+        last = text;
+      }
+      break;
+    }
+    last = next;
+  }
+  const line = block.ownerDocument.createElement("span");
+  block.insertBefore(line, first);
+  let node: Node | null = first;
+  while (node) {
+    const following: Node | null = node === last ? null : node.nextSibling;
+    line.appendChild(node);
+    node = following;
+  }
+  return line;
 }

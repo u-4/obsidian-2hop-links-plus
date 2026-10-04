@@ -40,7 +40,7 @@ Cosense / Scrapbox に近づけるため、Cosense と同じ関連ページの�
 `2hop-links-plus` を引き継ぐため、元の 2Hop Links Plus と同時にはインストールできず、
 置き換えとして動作します。導入前に既存プラグインフォルダをバックアップしてください。
 
-最新の公開版は `0.46.2` です。カードに Cmd を押しながらマウスを合わせると、関連カードと
+最新の公開版は `0.46.3` です。カードに Cmd を押しながらマウスを合わせると、関連カードと
 ノートの中身を出す軽い小窓が開き、小窓の中からさらにたどっていけます。
 
 設定の `Tab switch calculation delay (ms)` は通常のタブ切替後の待ち時間です
@@ -117,7 +117,7 @@ This is not an official release of the upstream project. It intentionally keeps
 the `2hop-links-plus` plugin ID, so it replaces the upstream plugin rather than
 installing alongside it. Back up your existing plugin directory before trying it.
 
-The latest release is `0.46.2`. Cmd+hover on a card opens a light popup with
+The latest release is `0.46.3`. Cmd+hover on a card opens a light popup with
 the note's related cards and a preview, and popups can be followed onward.
 
 `Tab switch calculation delay (ms)` controls the normal post-switch delay and

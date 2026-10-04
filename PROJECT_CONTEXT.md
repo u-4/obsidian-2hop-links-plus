@@ -5,7 +5,7 @@
 - This is a public community fork based on `2hop-links-plus` 0.37.0.
 - The Git history is rooted in the upstream `0.37.0` tag; local improvements are
   maintained on `main`.
-- Version `0.46.2` is the current release (popups open off a card corner, PalmWiki-style, with a transparent card row). Cmd+hover on a card opens a light
+- Version `0.46.3` is the current release (popups open off a card corner, PalmWiki-style, with a transparent card row, and scroll to and highlight the line linking back). Cmd+hover on a card opens a light
   popup (related cards above a read-only preview), stackable, placed by free
   space; clicking hands over to Hover Editor via hover-link source
   `2hop-links-edit`. `notePreview.ts` and `relatedPopover.tsx` follow

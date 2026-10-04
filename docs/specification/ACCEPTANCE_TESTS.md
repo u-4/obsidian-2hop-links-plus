@@ -191,6 +191,11 @@ Expected result:
   all popups. Without Cmd, pointing at a card does nothing.
 - Moving the pointer off a link or card inside a popup, while staying inside
   the popup, keeps it open.
+- The preview scrolls to and highlights the line that links back to where the
+  pointer came from: for a 2-hop card the line with the group's link, for a
+  link inside a popup the line linking to that popup's note, and for a link
+  to a heading (`[[Note#Heading]]`) that heading. Only that line is
+  highlighted, also inside bulleted lists.
 
 ## 9. Card search/filter
 
