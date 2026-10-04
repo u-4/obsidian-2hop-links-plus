@@ -5,12 +5,12 @@
 - This is a public community fork based on `2hop-links-plus` 0.37.0.
 - The Git history is rooted in the upstream `0.37.0` tag; local improvements are
   maintained on `main`.
-- Version `0.48.2` is the current release (deeper popups close when the pointer returns to the popup below; pointer moves without a screen position change are ignored; overscroll is contained). Popups keep a sticky one-line
-  title; settings `popupTrigger` ("mod" default, "hover") and
-  `popupCardsPosition` ("above" default, "below", "auto"). Hover-only opens on
-  pointer rest via document mousemove, not after typing or with a button down
-  (`hoverOpenDelay`). 0.47.x added body-link popups (document capture, only
-  links to notes, only on hover-capable pointers) and the title strip.
+- Version `0.49.0` is the current release. The title-bar button
+  (`scrollNavigation.ts`) switches icon by destination, has an elevator-style
+  look (`--twohop-elevator-*`), and in side-pane mode reveals the 2-hop pane or
+  restores the previous tab/collapsed sidebar (`togglePane` in `main.tsx`,
+  icon kept current by a ResizeObserver on the pane). 0.48.x added hover-only
+  popups, the sticky title and card row position.
 - 0.45.x made cards lazy and PalmWiki-shaped. Cards load excerpts and images only
   near the viewport through a shared preview store (two reads at a time,
   remembered per note version), and use PalmWiki Home's card shape. The

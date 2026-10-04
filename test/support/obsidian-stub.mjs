@@ -32,3 +32,5 @@ export class Scope {
   register() {}
 }
 export class Menu {}
+
+export function setIcon() {}

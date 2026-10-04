@@ -29,7 +29,9 @@ import { Links } from "../src/links.ts";
 import {
   getScrollDestination,
   getScrollDestinationLabel,
+  inlineButtonState,
   MarkdownScrollNavigator,
+  paneButtonState,
 } from "../src/scrollNavigation.ts";
 import { getNextLoadedState } from "../src/ui/twohopLinksLoadState.ts";
 import {
@@ -1168,4 +1170,15 @@ test("related cards sit above, below, or on the side away from the pointer", () 
   assert.equal(cardsBelowPreview("below", true), true);
   assert.equal(cardsBelowPreview("auto", false), true, "popup below the pointer: cards at its far bottom");
   assert.equal(cardsBelowPreview("auto", true), false, "popup above the pointer: cards at its far top");
+});
+
+test("the title-bar button shows where it goes next", () => {
+  assert.equal(inlineButtonState("links").icon, "arrow-down-to-line");
+  assert.equal(inlineButtonState("links").isLit, false);
+  assert.equal(inlineButtonState("top").icon, "arrow-up-to-line");
+  assert.equal(inlineButtonState("top").isLit, true, "lit while the 2-hop links are in view");
+  assert.equal(paneButtonState({ side: "right", showing: false }).icon, "arrow-right-to-line");
+  assert.equal(paneButtonState({ side: "left", showing: false }).icon, "arrow-left-to-line");
+  const close = paneButtonState({ side: "left", showing: true });
+  assert.deepEqual([close.icon, close.destination, close.isLit], ["x", "pane-close", true]);
 });

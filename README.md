@@ -40,8 +40,8 @@ Cosense / Scrapbox に近づけるため、Cosense と同じ関連ページの�
 `2hop-links-plus` を引き継ぐため、元の 2Hop Links Plus と同時にはインストールできず、
 置き換えとして動作します。導入前に既存プラグインフォルダをバックアップしてください。
 
-最新の公開版は `0.48.2` です。軽い小窓はノート名を上に残し、開き方（Cmd/Ctrl + ホバー、またはホバーのみ）と
-関連カードの位置（上・下・自動）を設定で選べます。
+最新の公開版は `0.49.0` です。タイトルバーのボタンが行き先を矢印で示すエレベーター風の丸いボタンになり、
+別パネル表示のときは押すと 2-hop リンクのパネルを出し入れします。
 
 設定の `Tab switch calculation delay (ms)` は通常のタブ切替後の待ち時間です
 （既定 `200` ms）。コマンドパレットの `Show performance statistics` と
@@ -117,9 +117,9 @@ This is not an official release of the upstream project. It intentionally keeps
 the `2hop-links-plus` plugin ID, so it replaces the upstream plugin rather than
 installing alongside it. Back up your existing plugin directory before trying it.
 
-The latest release is `0.48.2`. Light popups keep the note name at the top,
-and settings choose how they open (Cmd/Ctrl + hover or hover only) and where
-the related cards sit (above, below, auto).
+The latest release is `0.49.0`. The title-bar button is a round,
+elevator-style button whose arrow shows where it goes, and in side-pane mode it
+brings the 2-hop pane forward or puts the previous tab back.
 
 `Tab switch calculation delay (ms)` controls the normal post-switch delay and
 defaults to `200` ms. The command palette actions `Show performance statistics`

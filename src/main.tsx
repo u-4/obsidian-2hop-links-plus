@@ -25,7 +25,7 @@ import {
   METADATA_REFRESH_DEBOUNCE_MS,
   StartupRefreshGate,
 } from "./performance";
-import { MarkdownScrollNavigator } from "./scrollNavigation";
+import { MarkdownScrollNavigator, PaneToggle } from "./scrollNavigation";
 import {
   BoundedAnimationFrameRetry,
   getAllMarkdownHostElements,
@@ -48,6 +48,9 @@ const HOST_RELATED_REGION_CLASS = "has-twohop-document-related-region";
 // Covers roughly one to two seconds on common 60-120 Hz displays.
 const MARKDOWN_HOST_RETRY_FRAMES = 120;
 const MODE_SWITCH_CHECK_DELAY_MS = 50;
+
+// Obsidian's sidebars; collapse() and collapsed are not in the published typings.
+type CollapsibleSplit = { collapsed: boolean; collapse(): void };
 
 export default class TwohopLinksPlugin extends Plugin {
   settings: TwohopPluginSettings;
@@ -147,7 +150,7 @@ export default class TwohopLinksPlugin extends Plugin {
       if (activeView === view && !this.settings.showTwoHopLinksInSeparatePane) {
         await this.renderTwohopLinks(true);
       }
-    });
+    }, this.paneToggle);
     this.refreshTask = new DebouncedTask({
       onSupersede: () => this.links.cancelActiveGather(),
       onError: (error) => console.error("Error refreshing 2-hop links", error),
@@ -208,6 +211,7 @@ export default class TwohopLinksPlugin extends Plugin {
       this.app.workspace.on("layout-change", () => {
         this.scrollNavigator.cancelPending();
         this.scrollNavigator.prune();
+        this.refreshPaneButton();
         // Results are rendered only into the current mode's host, so a mode
         // switch needs a render; it reuses the last gathered result.
         // The new mode's host may not be in place yet when the event fires.
@@ -231,6 +235,7 @@ export default class TwohopLinksPlugin extends Plugin {
       this.startupRefreshGate.markLayoutReady();
       this.registerVaultInvalidationEvents();
       this.scheduleRefresh(true, this.getRefreshDebounceMs());
+      this.refreshPaneButton();
     });
 
     this.addCommand({
@@ -256,6 +261,7 @@ export default class TwohopLinksPlugin extends Plugin {
     this.disableLinksInMarkdown();
     this.previewStore.dispose();
     setCardHoverHandler(null);
+    this.paneObserver?.disconnect();
     this.titleStrip.hide();
     this.popover.dispose();
     console.log("unloading plugin");
@@ -504,6 +510,130 @@ export default class TwohopLinksPlugin extends Plugin {
     if (this.showLinksInMarkdown) {
       this.scheduleRefresh(false, this.getRefreshDebounceMs());
     }
+    this.refreshPaneButton();
+  }
+
+  // --- The title-bar button when results live in a side pane ---
+
+  private paneRestore: {
+    leaf: WorkspaceLeaf | null;
+    collapse: boolean;
+  } | null = null;
+  private paneObserver: ResizeObserver | null = null;
+  private observedPaneEl: HTMLElement | null = null;
+
+  private readonly paneToggle: PaneToggle = {
+    isEnabled: () => this.settings.showTwoHopLinksInSeparatePane,
+    state: () => {
+      const leaf = this.getPaneLeaf();
+      const split = leaf ? this.sidebarOf(leaf) : null;
+      const side =
+        split === this.app.workspace.rightSplit
+          ? "right"
+          : split === this.app.workspace.leftSplit
+          ? "left"
+          : this.settings.panePositionIsRight
+          ? "right"
+          : "left";
+      const showing =
+        !!leaf &&
+        !split?.collapsed &&
+        leaf.view.containerEl.offsetParent !== null;
+      return { side, showing };
+    },
+    toggle: () => this.togglePane(),
+  };
+
+  /** Shows the button for the open note and keeps its icon current. */
+  private refreshPaneButton(): void {
+    if (this.isUnloaded || !this.settings.showTwoHopLinksInSeparatePane) {
+      this.observePaneLeaf(null);
+      return;
+    }
+    const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+    if (view) this.scrollNavigator.ensure(view);
+    this.observePaneLeaf(this.getPaneLeaf());
+    this.scrollNavigator.updateAll();
+  }
+
+  /**
+   * Switching sidebar tabs by hand sends no workspace event, but the hidden
+   * pane's size drops to zero, so its size tells when to refresh the icon.
+   */
+  private observePaneLeaf(leaf: WorkspaceLeaf | null): void {
+    const el = leaf?.view.containerEl ?? null;
+    if (el === this.observedPaneEl) return;
+    this.paneObserver?.disconnect();
+    this.paneObserver = null;
+    this.observedPaneEl = el;
+    if (!el) return;
+    const ownerWindow = el.ownerDocument.defaultView;
+    if (!ownerWindow || !("ResizeObserver" in ownerWindow)) return;
+    this.paneObserver = new ownerWindow.ResizeObserver(() =>
+      this.scrollNavigator.updateAll()
+    );
+    this.paneObserver.observe(el);
+  }
+
+  private getPaneLeaf(): WorkspaceLeaf | null {
+    return this.app.workspace.getLeavesOfType("TwoHopLinksView")[0] ?? null;
+  }
+
+  private sidebarOf(leaf: WorkspaceLeaf): CollapsibleSplit | null {
+    const root = leaf.getRoot();
+    const { leftSplit, rightSplit } = this.app.workspace;
+    return root === rightSplit || root === leftSplit
+      ? (root as unknown as CollapsibleSplit)
+      : null;
+  }
+
+  private paneSiblings(leaf: WorkspaceLeaf): WorkspaceLeaf[] {
+    const parent = leaf.parent as unknown as { children?: unknown[] } | null;
+    return (parent?.children ?? []).filter(
+      (child): child is WorkspaceLeaf =>
+        child instanceof WorkspaceLeaf && child !== leaf
+    );
+  }
+
+  /**
+   * Shows the 2-hop pane, remembering which tab (or a collapsed sidebar) it
+   * replaced; pressed again, puts that back.
+   */
+  private async togglePane(): Promise<void> {
+    let leaf = this.getPaneLeaf();
+    if (!leaf) {
+      await this.openTwoHopLinksView();
+      leaf = this.getPaneLeaf();
+      if (!leaf) return;
+    }
+    const split = this.sidebarOf(leaf);
+    const siblings = this.paneSiblings(leaf);
+    if (this.paneToggle.state().showing) {
+      const restore = this.paneRestore;
+      this.paneRestore = null;
+      if (restore?.collapse && split) {
+        split.collapse();
+        return;
+      }
+      const back =
+        restore?.leaf && siblings.includes(restore.leaf)
+          ? restore.leaf
+          : siblings[0];
+      if (back) {
+        await this.app.workspace.revealLeaf(back);
+      } else {
+        split?.collapse();
+      }
+      return;
+    }
+    this.paneRestore = {
+      leaf:
+        siblings.find(
+          (sibling) => sibling.view.containerEl.offsetParent !== null
+        ) ?? null,
+      collapse: Boolean(split?.collapsed),
+    };
+    await this.app.workspace.revealLeaf(leaf);
   }
 
   private resolveEntityFile(fileEntity: FileEntity): TFile | null {
@@ -653,6 +783,7 @@ export default class TwohopLinksPlugin extends Plugin {
       await this.openTwoHopLinksView();
       this.disableLinksInMarkdown();
       this.removePaddingBottom();
+      this.refreshPaneButton();
     } else {
       const restoreLeaf = chooseInlineRestoreLeaf({
         didCloseActiveSeparatePane: activeSeparatePaneLeaf !== null,
@@ -842,7 +973,7 @@ export default class TwohopLinksPlugin extends Plugin {
     }
     if (this.settings.showTwoHopLinksInSeparatePane) {
       this.markdownHostRetry.cancel();
-      this.scrollNavigator.removeAll();
+      this.refreshPaneButton();
       return;
     }
     if (!markdownView && activeLeaf.getViewState().type !== "markdown") {

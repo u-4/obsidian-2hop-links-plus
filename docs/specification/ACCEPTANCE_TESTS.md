@@ -226,6 +226,18 @@ Expected result:
 - `Related cards in the light preview` puts the cards above the preview,
   below it, or (Auto) on the side away from the pointer.
 
+## 8e. Title-bar button
+
+Expected result:
+
+- Below-note mode: the round button shows "arrow down to line" at the note
+  top and "arrow up to line" (lit) while the 2-hop links are in view; each
+  press goes to the shown destination.
+- Side-pane mode: the button points toward the pane's sidebar and brings the
+  pane forward; it then shows "×" and puts the previous tab back, or
+  collapses the sidebar if it was collapsed. Switching tabs by hand updates
+  the icon.
+
 ## 9. Card search/filter
 
 Open `Active.md` and use the search box above the cards.

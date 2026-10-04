@@ -1,3 +1,4 @@
+import { setIcon } from "obsidian";
 import type { MarkdownView } from "obsidian";
 
 const RESULTS_CONTAINER_CLASS = "twohop-links-container";
@@ -55,17 +56,77 @@ export function getScrollDestination(
 export function getScrollDestinationLabel(
   destination: ScrollDestination
 ): string {
+  return destination === "top" ? "Scroll to note top" : "Scroll to 2-hop links";
+}
+
+/** The 2-hop side pane, when results are shown there instead of inline. */
+export interface PaneToggle {
+  isEnabled(): boolean;
+  state(): { side: "left" | "right"; showing: boolean };
+  toggle(): Promise<void>;
+}
+
+export interface ButtonState {
+  icon: string;
+  label: string;
+  destination: string;
+  /** Lit while the 2-hop links are what the button would leave. */
+  isLit: boolean;
+}
+
+/** Below the note: jump down to the 2-hop links, or back up to the top. */
+export function inlineButtonState(destination: ScrollDestination): ButtonState {
   return destination === "top"
-    ? "Scroll to note top"
-    : "Scroll to 2-hop links";
+    ? {
+        icon: "arrow-up-to-line",
+        label: getScrollDestinationLabel("top"),
+        destination: "top",
+        isLit: true,
+      }
+    : {
+        icon: "arrow-down-to-line",
+        label: getScrollDestinationLabel("links"),
+        destination: "links",
+        isLit: false,
+      };
+}
+
+/** In a side pane: show the 2-hop pane, or put the previous pane back. */
+export function paneButtonState(state: {
+  side: "left" | "right";
+  showing: boolean;
+}): ButtonState {
+  if (state.showing) {
+    return {
+      icon: "x",
+      label: "Close the 2-hop links pane",
+      destination: "pane-close",
+      isLit: true,
+    };
+  }
+  return {
+    icon: state.side === "right" ? "arrow-right-to-line" : "arrow-left-to-line",
+    label: "Show the 2-hop links pane",
+    destination: "pane-open",
+    isLit: false,
+  };
 }
 
 export class MarkdownScrollNavigator {
   private actions = new Map<MarkdownView, ManagedScrollAction>();
 
   constructor(
-    private requestRender?: (view: MarkdownView) => Promise<void>
+    private requestRender?: (view: MarkdownView) => Promise<void>,
+    private pane?: PaneToggle
   ) {}
+
+  /** Refresh every button, for example after the side pane changed. */
+  updateAll(): void {
+    this.pruneDisconnectedViews();
+    for (const action of this.actions.values()) {
+      this.updateAction(action);
+    }
+  }
 
   ensure(view: MarkdownView): void {
     this.pruneDisconnectedViews();
@@ -83,7 +144,7 @@ export class MarkdownScrollNavigator {
     }
 
     const element = view.addAction(
-      "chevrons-up-down",
+      "arrow-down-to-line",
       getScrollDestinationLabel("links"),
       () => {
         void this.toggle(view);
@@ -175,26 +236,42 @@ export class MarkdownScrollNavigator {
   }
 
   private updateAction(action: ManagedScrollAction): void {
-    const target = this.findVisibleResultsContainer(action.view);
-    const scrollHost = target ? this.findScrollHost(target) : null;
-    const destination = target
-      ? getScrollDestination(
-          scrollHost?.scrollTop ?? action.view.currentMode.getScroll(),
-          target.getBoundingClientRect(),
-          scrollHost?.getBoundingClientRect() ??
-            action.view.containerEl.getBoundingClientRect()
-        )
-      : "links";
-    const label = getScrollDestinationLabel(destination);
+    let state: ButtonState;
+    if (this.pane?.isEnabled()) {
+      state = paneButtonState(this.pane.state());
+    } else {
+      const target = this.findVisibleResultsContainer(action.view);
+      const scrollHost = target ? this.findScrollHost(target) : null;
+      state = inlineButtonState(
+        target
+          ? getScrollDestination(
+              scrollHost?.scrollTop ?? action.view.currentMode.getScroll(),
+              target.getBoundingClientRect(),
+              scrollHost?.getBoundingClientRect() ??
+                action.view.containerEl.getBoundingClientRect()
+            )
+          : "links"
+      );
+    }
 
-    action.element.setAttribute("aria-label", label);
-    action.element.setAttribute("title", label);
-    action.element.dataset.twohopScrollDestination = destination;
+    if (action.element.dataset.twohopIcon !== state.icon) {
+      setIcon(action.element, state.icon);
+      action.element.dataset.twohopIcon = state.icon;
+    }
+    action.element.setAttribute("aria-label", state.label);
+    action.element.setAttribute("title", state.label);
+    action.element.dataset.twohopScrollDestination = state.destination;
+    action.element.dataset.twohopLit = String(state.isLit);
   }
 
   private async toggle(view: MarkdownView): Promise<void> {
     const action = this.actions.get(view);
     if (action) this.clearSettleTimeouts(action);
+    if (this.pane?.isEnabled()) {
+      await this.pane.toggle();
+      this.updateAll();
+      return;
+    }
 
     let target = this.findVisibleResultsContainer(view);
     if (!target && this.requestRender) {
@@ -233,10 +310,13 @@ export class MarkdownScrollNavigator {
     }
 
     if (ownerWindow) {
-      ownerWindow.setTimeout(() => {
-        const action = this.actions.get(view);
-        if (action) this.updateAction(action);
-      }, reduceMotion ? 0 : 350);
+      ownerWindow.setTimeout(
+        () => {
+          const action = this.actions.get(view);
+          if (action) this.updateAction(action);
+        },
+        reduceMotion ? 0 : 350
+      );
     }
   }
 
@@ -360,9 +440,7 @@ export class MarkdownScrollNavigator {
     );
   }
 
-  private findVisibleResultsContainer(
-    view: MarkdownView
-  ): HTMLElement | null {
+  private findVisibleResultsContainer(view: MarkdownView): HTMLElement | null {
     const selectors =
       view.getMode() === "preview"
         ? [`.markdown-preview-view > .${RESULTS_CONTAINER_CLASS}`]
