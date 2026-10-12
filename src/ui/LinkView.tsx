@@ -19,6 +19,7 @@ const PREVIEW_ROOT_MARGIN = "200px";
 
 interface LinkViewState {
   preview: CardPreview | null;
+  isNearViewport: boolean;
   isImageBroken: boolean;
   title: string | null;
   mouseDown: boolean;
@@ -40,6 +41,7 @@ export default class LinkView extends React.Component<
     super(props);
     this.state = {
       preview: null,
+      isNearViewport: false,
       isImageBroken: false,
       title: null,
       mouseDown: false,
@@ -71,6 +73,7 @@ export default class LinkView extends React.Component<
     const ownerWindow = element?.ownerDocument.defaultView;
     if (!element || !ownerWindow || !("IntersectionObserver" in ownerWindow)) {
       this.isNearViewport = true;
+      this.setState({ isNearViewport: true });
       return;
     }
     this.observer = new ownerWindow.IntersectionObserver(
@@ -78,6 +81,7 @@ export default class LinkView extends React.Component<
         const isNear = entries.some((entry) => entry.isIntersecting);
         if (isNear === this.isNearViewport) return;
         this.isNearViewport = isNear;
+        this.setState({ isNearViewport: isNear });
         if (isNear && this.state.preview === null) {
           void this.loadPreview();
         }
@@ -257,14 +261,17 @@ export default class LinkView extends React.Component<
         <div className="twohop-links-box-title">{this.state.title}</div>
         {this.state.preview?.imageUrl && !this.state.isImageBroken && (
           <div className="twohop-links-box-media">
-            <img
-              src={this.state.preview.imageUrl}
-              alt=""
-              loading="lazy"
-              decoding="async"
-              draggable={false}
-              onError={() => this.setState({ isImageBroken: true })}
-            />
+            {/* Keep the frame and cached preview; only mount the image nearby. */}
+            {this.state.isNearViewport && (
+              <img
+                src={this.state.preview.imageUrl}
+                alt=""
+                loading="lazy"
+                decoding="async"
+                draggable={false}
+                onError={() => this.setState({ isImageBroken: true })}
+              />
+            )}
           </div>
         )}
         <div className="twohop-links-box-preview">

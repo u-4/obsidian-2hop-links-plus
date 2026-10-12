@@ -34,6 +34,8 @@ import {
   paneButtonState,
 } from "../src/scrollNavigation.ts";
 import { getNextLoadedState } from "../src/ui/twohopLinksLoadState.ts";
+import LinkView from "../src/ui/LinkView.tsx";
+import { renderToStaticMarkup } from "react-dom/server";
 import {
   getNextSearchDisclosureState,
   getSortMenuEntries,
@@ -1080,6 +1082,127 @@ test("the preview store reads each note once, two at a time, and skips unneeded 
   await store.read(files[0], needed);
   assert.equal(reads, 4, "an edited note is read again");
   store.dispose();
+});
+
+// Exercise the component's observer, async reads and rendered markup without
+// a browser. This does not measure layout or browser image-memory release.
+async function createLinkViewFixture(t, getPreview, withObserver = true) {
+  const previousWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
+  Object.defineProperty(globalThis, "window", {
+    configurable: true,
+    value: { matchMedia: () => ({ matches: true }) },
+  });
+  t.after(() => {
+    if (previousWindow) {
+      Object.defineProperty(globalThis, "window", previousWindow);
+    } else {
+      delete globalThis.window;
+    }
+  });
+
+  let notify;
+  let disconnected = false;
+  const ownerWindow = {};
+  if (withObserver) {
+    ownerWindow.IntersectionObserver = class {
+      constructor(callback) { notify = callback; }
+      observe() {}
+      disconnect() { disconnected = true; }
+    };
+  }
+  const card = new LinkView({
+    fileEntity: { targetPath: "Card.md", linkText: "Card", sourcePath: "Note.md" },
+    getTitle: async () => "Card title",
+    getPreview,
+    onClick: async () => {},
+    app: {},
+  });
+  card.cardRef.current = { ownerDocument: { defaultView: ownerWindow } };
+  card.setState = (change) => {
+    card.state = {
+      ...card.state,
+      ...(typeof change === "function" ? change(card.state, card.props) : change),
+    };
+  };
+  let unmounted = false;
+  const unmount = () => {
+    if (unmounted) return;
+    unmounted = true;
+    card.componentWillUnmount();
+  };
+  t.after(unmount);
+  card.componentDidMount();
+  await flushCardRead();
+  return {
+    near: (isIntersecting) => notify([{ isIntersecting }]),
+    markup: () => renderToStaticMarkup(card.render()),
+    disconnected: () => disconnected,
+    unmount,
+  };
+}
+
+function flushCardRead() {
+  return new Promise((resolve) => setImmediate(resolve));
+}
+
+const cardPreviewFixture = {
+  text: "A short excerpt",
+  imageUrl: "app://fixture/card.png",
+};
+
+test("card images leave the viewport without losing their frame or cached preview", async (t) => {
+  let reads = 0;
+  const card = await createLinkViewFixture(t, async () => {
+    reads++;
+    return cardPreviewFixture;
+  });
+  assert.doesNotMatch(card.markup(), /<img\b/);
+  assert.equal(reads, 0, "offscreen cards do not start a preview read");
+  card.near(true);
+  await flushCardRead();
+  const visible = card.markup();
+  assert.match(visible, /<img\b/);
+  card.near(false);
+  const offscreen = card.markup();
+  assert.doesNotMatch(offscreen, /<img\b/);
+  assert.equal(offscreen, visible.replace(/<img\b[^>]*>/, ""),
+    "only the image leaves; the media frame, title and excerpt stay");
+  card.near(true);
+  await flushCardRead();
+  assert.equal(card.markup(), visible, "the same image URL and text return");
+  assert.equal(reads, 1, "returning to a loaded card does not reread its note");
+});
+
+test("a preview finishing offscreen keeps its text and frame without adding an image", async (t) => {
+  let finish;
+  const card = await createLinkViewFixture(t, () => new Promise((resolve) => { finish = resolve; }));
+  card.near(true);
+  card.near(false);
+  finish(cardPreviewFixture);
+  await flushCardRead();
+  const offscreen = card.markup();
+  assert.doesNotMatch(offscreen, /<img\b/);
+  assert.match(offscreen, /twohop-links-box-media/);
+  assert.match(offscreen, /A short excerpt/);
+  card.near(true);
+  assert.match(card.markup(), /<img\b[^>]*src="app:\/\/fixture\/card.png"/);
+});
+
+test("cards keep the existing image fallback when viewport observation is unavailable", async (t) => {
+  const card = await createLinkViewFixture(t, async () => cardPreviewFixture, false);
+  assert.match(card.markup(), /<img\b/);
+});
+
+test("a preview finishing after unmount does not restore the card image", async (t) => {
+  let finish;
+  const card = await createLinkViewFixture(t, () => new Promise((resolve) => { finish = resolve; }));
+  card.near(true);
+  card.unmount();
+  const atUnmount = card.markup();
+  finish(cardPreviewFixture);
+  await flushCardRead();
+  assert.equal(card.markup(), atUnmount);
+  assert.equal(card.disconnected(), true);
 });
 
 test("a card's popup opens off a free corner and barely covers its neighbours", () => {
