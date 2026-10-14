@@ -40,6 +40,7 @@ import { chooseInlineRestoreLeaf } from "./inlineRestoreLeaf";
 import { LinkSignatureTracker } from "./linkSignature";
 import { PreviewStore } from "./cardPreview";
 import { CardThumbnails, setCardThumbnails } from "./cardThumbnail";
+import { closeBodySearchPersistence } from "./bodySearchStore";
 import { HOVER_EDIT_SOURCE, RelatedPopover } from "./relatedPopover";
 import { setCardHoverHandler } from "./cardHover";
 import { BodyLinkHover } from "./linkHover";
@@ -278,6 +279,7 @@ export default class TwohopLinksPlugin extends Plugin {
     this.previewStore.dispose();
     setCardThumbnails(null);
     this.thumbnails.dispose();
+    closeBodySearchPersistence();
     setCardHoverHandler(null);
     this.paneObserver?.disconnect();
     this.titleStrip.hide();

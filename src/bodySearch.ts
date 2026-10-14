@@ -3,6 +3,7 @@ import { FileEntity } from "./model/FileEntity";
 import { PropertiesLinks } from "./model/PropertiesLinks";
 import { TwohopLink } from "./model/TwohopLink";
 import { removeBlockReference } from "./utils";
+import { getBodySearchPersistence } from "./bodySearchStore";
 
 export const BODY_SEARCH_DEBOUNCE_MS = 200;
 export const MAX_BODY_SEARCH_BYTES = 2 * 1000 * 1000;
@@ -61,25 +62,94 @@ export function collectVisibleCardSearchEntities({
   return entities;
 }
 
+/** Body texts kept on this device between Obsidian sessions. */
+export interface StoredBodyText {
+  mtime: number;
+  size: number;
+  text: string;
+}
+
+export interface BodySearchPersistence {
+  /** Stored texts by path; missing or unreadable ones are left out. */
+  getMany(paths: string[]): Promise<Map<string, StoredBodyText>>;
+  /** Stores a text; failures are ignored. */
+  put(path: string, entry: StoredBodyText): void;
+  /** The stored texts were used again (keeps them from being pruned). */
+  touch(paths: string[]): void;
+  close(): void;
+}
+
 export async function populateBodySearchTexts(
   app: App,
-  entities: FileEntity[]
+  entities: FileEntity[],
+  persistence: BodySearchPersistence | null = getBodySearchPersistence(app)
 ): Promise<void> {
-  const bodyTextByPath = new Map<string, string>();
-
+  const files = new Map<string, TFile>();
+  const fileOfEntity = new Map<FileEntity, TFile>();
   for (const entity of entities) {
     const file = resolveEntityFile(app, entity);
     if (!file || !file.extension?.match(/^(md|markdown)$/)) {
       entity.searchText = "";
       continue;
     }
-
-    if (!bodyTextByPath.has(file.path)) {
-      bodyTextByPath.set(file.path, await readBodySearchText(app, file));
-    }
-
-    entity.searchText = bodyTextByPath.get(file.path);
+    files.set(file.path, file);
+    fileOfEntity.set(entity, file);
   }
+
+  const bodyTextByPath = new Map<string, string>();
+  const misses: TFile[] = [];
+  for (const file of files.values()) {
+    const text = memoryBodySearchText(file);
+    if (text === undefined) {
+      misses.push(file);
+    } else {
+      bodyTextByPath.set(file.path, text);
+    }
+  }
+
+  let unread = misses;
+  if (persistence && misses.length > 0) {
+    let stored = new Map<string, StoredBodyText>();
+    try {
+      stored = await persistence.getMany(misses.map((file) => file.path));
+    } catch {
+      // Fall back to reading the notes.
+    }
+    unread = [];
+    const used: string[] = [];
+    for (const file of misses) {
+      const entry = stored.get(file.path);
+      if (
+        entry &&
+        entry.mtime === file.stat.mtime &&
+        entry.size === file.stat.size &&
+        typeof entry.text === "string"
+      ) {
+        rememberBodySearchText(file, entry.text);
+        bodyTextByPath.set(file.path, entry.text);
+        used.push(file.path);
+      } else {
+        unread.push(file);
+      }
+    }
+    if (used.length > 0) persistence.touch(used);
+  }
+
+  for (const file of unread) {
+    bodyTextByPath.set(
+      file.path,
+      await readBodySearchText(app, file, persistence)
+    );
+  }
+
+  for (const [entity, file] of fileOfEntity) {
+    entity.searchText = bodyTextByPath.get(file.path) ?? "";
+  }
+}
+
+/** Forgets the in-memory texts (the stored ones stay). */
+export function clearBodySearchMemoryCache(): void {
+  bodySearchTextCache.clear();
 }
 
 function resolveEntityFile(app: App, entity: FileEntity): TFile | null {
@@ -94,11 +164,11 @@ function resolveEntityFile(app: App, entity: FileEntity): TFile | null {
   );
 }
 
-async function readBodySearchText(app: App, file: TFile): Promise<string> {
+/** The remembered text for this version of the note, or undefined. */
+function memoryBodySearchText(file: TFile): string | undefined {
   if (file.stat.size > MAX_BODY_SEARCH_BYTES) {
     return "";
   }
-
   const cached = bodySearchTextCache.get(file.path);
   if (
     cached &&
@@ -112,18 +182,34 @@ async function readBodySearchText(app: App, file: TFile): Promise<string> {
   if (cached) {
     bodySearchTextCache.delete(file.path);
   }
+  return undefined;
+}
 
+function rememberBodySearchText(file: TFile, text: string): void {
+  bodySearchTextCache.set(file.path, {
+    mtime: file.stat.mtime,
+    size: file.stat.size,
+    text,
+  });
+  pruneBodySearchCache();
+}
+
+async function readBodySearchText(
+  app: App,
+  file: TFile,
+  persistence: BodySearchPersistence | null
+): Promise<string> {
   try {
     const content = await app.vault.cachedRead(file);
     const text = content
       .replace(/^(.*\n)?---[\s\S]*?---\n?/m, " ")
       .slice(0, MAX_BODY_SEARCH_CHARS);
-    bodySearchTextCache.set(file.path, {
+    rememberBodySearchText(file, text);
+    persistence?.put(file.path, {
       mtime: file.stat.mtime,
       size: file.stat.size,
       text,
     });
-    pruneBodySearchCache();
     return text;
   } catch (error) {
     console.debug("Could not read body search text", file.path, error);

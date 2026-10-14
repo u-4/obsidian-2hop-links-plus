@@ -17,6 +17,14 @@ import {
 } from "../src/linkSignature.ts";
 import { buildRelatedPages, LARGE_GROUP_SIZE } from "../src/cosenseRelated.ts";
 import { LinkIndex } from "../src/linkIndex.ts";
+import {
+  clearBodySearchMemoryCache,
+  populateBodySearchTexts,
+} from "../src/bodySearch.ts";
+import {
+  getBodySearchPersistence,
+  IndexedDbBodySearchStore,
+} from "../src/bodySearchStore.ts";
 import { excerpt, findWebImage, PreviewStore } from "../src/cardPreview.ts";
 import {
   CardThumbnails,
@@ -1145,6 +1153,100 @@ test("a result is not cached when a change it depends on arrives during the gath
   await other.gatherTwoHopLinks(files.get("A.md"));
   assert.equal(other.getPerformanceStats().resultComputations, 1);
   assert.equal(other.getPerformanceStats().resultCacheHits, 1);
+});
+
+function bodySearchFixture() {
+  const files = new Map(
+    ["One", "Two", "Three"].map((name) => [
+      `${name}.md`,
+      new TFile(`${name}.md`, { mtime: 1_000, size: 50 }),
+    ])
+  );
+  const reads = [];
+  const app = {
+    vault: {
+      getAbstractFileByPath: (path) => files.get(path) ?? null,
+      cachedRead: async (file) => {
+        reads.push(file.path);
+        return `---\ntags: x\n---\nbody of ${file.basename}`;
+      },
+      getName: () => "Test",
+    },
+    metadataCache: { getFirstLinkpathDest: () => null },
+  };
+  const entities = () =>
+    Array.from(files.keys(), (path) => ({
+      targetPath: path,
+      linkText: path.replace(/\.md$/, ""),
+      sourcePath: "Note.md",
+    }));
+  return { app, files, reads, entities };
+}
+
+test("body-search texts stored on the device are reused when the note is unchanged", async () => {
+  clearBodySearchMemoryCache();
+  const { app, files, reads, entities } = bodySearchFixture();
+  const stored = new Map([
+    ["One.md", { mtime: 1_000, size: 50, text: "stored one" }],
+    ["Two.md", { mtime: 999, size: 50, text: "outdated two" }],
+  ]);
+  const puts = [];
+  const touched = [];
+  const persistence = {
+    getMany: async (paths) =>
+      new Map(paths.filter((path) => stored.has(path)).map((path) => [path, stored.get(path)])),
+    put: (path, entry) => puts.push([path, entry.text]),
+    touch: (paths) => touched.push(...paths),
+    close() {},
+  };
+  const first = entities();
+  await populateBodySearchTexts(app, first, persistence);
+  assert.deepEqual(first.map((entity) => entity.searchText.trim()), [
+    "stored one",
+    "body of Two",
+    "body of Three",
+  ]);
+  assert.deepEqual(reads, ["Two.md", "Three.md"], "a stored, unchanged text is not read");
+  assert.deepEqual(touched, ["One.md"]);
+  assert.deepEqual(puts.map(([path]) => path), ["Two.md", "Three.md"]);
+
+  const again = entities();
+  await populateBodySearchTexts(app, again, {
+    ...persistence,
+    getMany: async () => {
+      throw new Error("must not be asked: all texts are in memory");
+    },
+  });
+  assert.equal(reads.length, 2, "texts in memory are not read or looked up again");
+
+  clearBodySearchMemoryCache();
+  files.get("One.md").stat.mtime = 2_000;
+  const failing = { ...persistence, getMany: async () => { throw new Error("broken"); } };
+  const third = entities();
+  await populateBodySearchTexts(app, third, failing);
+  assert.equal(third[0].searchText.trim(), "body of One", "a failing store falls back to reading");
+  clearBodySearchMemoryCache();
+});
+
+test("without IndexedDB, body search keeps working from memory", async () => {
+  clearBodySearchMemoryCache();
+  const { app, reads, entities } = bodySearchFixture();
+  assert.equal(getBodySearchPersistence(app), null);
+  const list = entities();
+  await populateBodySearchTexts(app, list);
+  assert.equal(list[1].searchText.trim(), "body of Two");
+
+  const broken = new IndexedDbBodySearchStore(
+    { open: () => { throw new Error("denied"); } },
+    "vault"
+  );
+  assert.equal((await broken.getMany(["One.md"])).size, 0);
+  broken.put("One.md", { mtime: 1, size: 1, text: "x" });
+  broken.touch(["One.md"]);
+  broken.close();
+  await populateBodySearchTexts(app, entities(), broken);
+  assert.equal(reads.length, 3, "a broken store falls back to the memory cache");
+  clearBodySearchMemoryCache();
 });
 
 test("saved sort orders from earlier versions map to the new choices", () => {
