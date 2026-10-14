@@ -28,6 +28,21 @@ export const Keymap = {
     modifier === "Mod" ? Boolean(event?.metaKey || event?.ctrlKey) : false,
   isModEvent: (event) => Boolean(event?.metaKey || event?.ctrlKey),
 };
+export class ItemView extends Component {
+  constructor(leaf) {
+    super();
+    this.leaf = leaf;
+    this.app = leaf.app;
+    this.containerEl = leaf.containerEl;
+  }
+  registerEvent() {}
+  registerDomEvent(el, type, callback) {
+    el.addEventListener(type, callback);
+  }
+}
+export class WorkspaceLeaf {}
+export class MarkdownView {}
+export const Platform = { isMobile: false };
 export class Scope {
   register() {}
 }
