@@ -96,9 +96,7 @@ export function buildRelatedPages(input: RelatedInput): RelatedResult {
  * buildRelatedPages as small steps. Each yield reports roughly how much work
  * the step did, so a caller can give the main thread back on big hub notes.
  */
-export function* relatedPageSteps(
-  input: RelatedInput
-): Steps<RelatedResult> {
+export function* relatedPageSteps(input: RelatedInput): Steps<RelatedResult> {
   const { activePath, headwords } = input;
   const isCandidate = (path: string) =>
     path !== activePath && !input.isExcluded(path);
