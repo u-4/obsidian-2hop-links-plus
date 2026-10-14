@@ -30,12 +30,13 @@ export async function readPreview(
     return null;
   }
   if (IMAGE_FILE_PATTERN.test(file.path)) {
-    return {
-      text: "",
-      imageUrl: this.settings.showImage
-        ? this.app.vault.getResourcePath(file)
-        : null,
-    };
+    return this.settings.showImage
+      ? {
+          text: "",
+          imageUrl: this.app.vault.getResourcePath(file),
+          imagePath: file.path,
+        }
+      : { text: "", imageUrl: null };
   }
   if (file.extension !== "md") {
     return { text: "", imageUrl: null };
@@ -44,5 +45,5 @@ export async function readPreview(
   if (!preview || this.settings.showImage) {
     return preview;
   }
-  return { ...preview, imageUrl: null };
+  return { ...preview, imageUrl: null, imagePath: null };
 }

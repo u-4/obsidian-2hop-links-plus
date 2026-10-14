@@ -19,6 +19,11 @@ import { buildRelatedPages, LARGE_GROUP_SIZE } from "../src/cosenseRelated.ts";
 import { LinkIndex } from "../src/linkIndex.ts";
 import { excerpt, findWebImage, PreviewStore } from "../src/cardPreview.ts";
 import {
+  CardThumbnails,
+  MOBILE_MAX_ORIGINAL_BYTES,
+  setCardThumbnails,
+} from "../src/cardThumbnail.ts";
+import {
   cardsBelowPreview,
   hoverOpenDelay,
   placePopover,
@@ -1272,10 +1277,12 @@ async function createLinkViewFixture(t, getPreview, withObserver = true) {
   });
   card.cardRef.current = { ownerDocument: { defaultView: ownerWindow } };
   card.setState = (change) => {
+    const previous = card.state;
     card.state = {
       ...card.state,
       ...(typeof change === "function" ? change(card.state, card.props) : change),
     };
+    card.componentDidUpdate(card.props, previous);
   };
   let unmounted = false;
   const unmount = () => {
@@ -1409,6 +1416,150 @@ test("the side pane listens for link clicks once, however often it updates", asy
   await flushCardRead();
   assert.equal(prevented, true);
   assert.deepEqual(opened, ["Target.md"]);
+});
+
+function createThumbnailFixture({ isMobile = false, make } = {}) {
+  const images = new Map(
+    [
+      new TFile("img/photo.jpg", { size: 1_500_000 }),
+      new TFile("img/small.png", { size: 4_000 }),
+      new TFile("img/other.jpg", { size: 900_000 }),
+      new TFile("img/anim.gif", { size: 800_000 }),
+    ].map((file) => [file.path, file])
+  );
+  const reads = [];
+  const created = [];
+  const revoked = [];
+  const app = {
+    vault: {
+      getAbstractFileByPath: (path) => images.get(path) ?? null,
+      readBinary: async (file) => {
+        reads.push(file.path);
+        return new ArrayBuffer(8);
+      },
+    },
+  };
+  const thumbnails = new CardThumbnails(app, {
+    isMobile,
+    pixelRatio: () => 3,
+    makeThumbnail:
+      make ??
+      (async (_data, type, width, height) => {
+        if (type === "image/png") return "original";
+        return { type, width, height };
+      }),
+    createObjectUrl: (blob) => {
+      const url = `blob:${created.length}`;
+      created.push({ url, blob });
+      return url;
+    },
+    revokeObjectUrl: (url) => revoked.push(url),
+  });
+  return { thumbnails, images, reads, created, revoked };
+}
+
+test("card thumbnails are made once, at card size, and freed when unused", async () => {
+  const { thumbnails, reads, created, revoked } = createThumbnailFixture();
+  const first = thumbnails.acquire("img/photo.jpg", "app://photo.jpg");
+  const second = thumbnails.acquire("img/photo.jpg", "app://photo.jpg");
+  assert.equal(first.url, undefined, "not ready before it is made");
+  assert.equal(await first.ready, "blob:0");
+  assert.equal(await second.ready, "blob:0");
+  assert.deepEqual(reads, ["img/photo.jpg"], "the image is read and decoded once");
+  // A 320 x 120 CSS box at most, at a pixel ratio capped at 2.
+  assert.deepEqual(created[0].blob, { type: "image/jpeg", width: 640, height: 240 });
+  assert.equal(thumbnails.acquire("img/photo.jpg", "app://photo.jpg").url, "blob:0",
+    "a made thumbnail is available at once");
+
+  const small = thumbnails.acquire("img/small.png", "app://small.png");
+  assert.equal(await small.ready, "app://small.png", "a small image is shown as it is");
+  const gif = thumbnails.acquire("img/anim.gif", "app://anim.gif");
+  assert.equal(await gif.ready, "app://anim.gif", "GIFs keep the original (and animation)");
+
+  first.release();
+  second.release();
+  thumbnails.dispose();
+  assert.deepEqual(revoked, ["blob:0"], "unloading revokes the blob URLs");
+  assert.equal(thumbnails.size, 0);
+});
+
+test("only thumbnails no card uses are dropped, and their URLs revoked", async () => {
+  const { thumbnails, images, revoked } = createThumbnailFixture();
+  const leases = [];
+  for (let index = 0; index < 160; index++) {
+    const path = `img/many-${index}.jpg`;
+    images.set(path, new TFile(path, { size: 10_000 }));
+    leases.push(thumbnails.acquire(path, `app://${path}`));
+  }
+  await Promise.all(leases.map((lease) => lease.ready));
+  assert.equal(thumbnails.size, 160, "thumbnails in use stay");
+  assert.equal(revoked.length, 0);
+  for (const lease of leases.slice(0, 20)) lease.release();
+  assert.equal(thumbnails.size, 150);
+  assert.deepEqual(revoked, Array.from({ length: 10 }, (_, i) => `blob:${i}`));
+  thumbnails.dispose();
+});
+
+test("without a thumbnail, cards fall back to the original, on mobile only when small", async () => {
+  const failing = async () => {
+    throw new Error("unsupported");
+  };
+  const desktop = createThumbnailFixture({ make: failing });
+  assert.equal(
+    await desktop.thumbnails.acquire("img/photo.jpg", "app://photo.jpg").ready,
+    "app://photo.jpg"
+  );
+  const mobile = createThumbnailFixture({ isMobile: true, make: async () => null });
+  assert.ok(1_500_000 > MOBILE_MAX_ORIGINAL_BYTES);
+  assert.equal(
+    await mobile.thumbnails.acquire("img/photo.jpg", "app://photo.jpg").ready,
+    null,
+    "a large original is not loaded on a phone"
+  );
+  mobile.images.set("img/tiny.jpg", new TFile("img/tiny.jpg", { size: 100_000 }));
+  assert.equal(
+    await mobile.thumbnails.acquire("img/tiny.jpg", "app://tiny.jpg").ready,
+    "app://tiny.jpg"
+  );
+});
+
+test("cards show the thumbnail of a local image and let it go offscreen", async (t) => {
+  const fixture = createThumbnailFixture();
+  setCardThumbnails(fixture.thumbnails);
+  t.after(() => setCardThumbnails(null));
+  const card = await createLinkViewFixture(t, async () => ({
+    text: "Photo note",
+    imageUrl: "app://photo.jpg",
+    imagePath: "img/photo.jpg",
+  }));
+  card.near(true);
+  await flushCardRead();
+  await flushCardRead();
+  assert.match(card.markup(), /<img\b[^>]*src="blob:0"/);
+  card.near(false);
+  assert.doesNotMatch(card.markup(), /<img\b/);
+  assert.match(card.markup(), /twohop-links-box-media/);
+  card.near(true);
+  assert.match(card.markup(), /<img\b[^>]*src="blob:0"/, "the kept thumbnail returns at once");
+  assert.deepEqual(fixture.reads, ["img/photo.jpg"]);
+  card.unmount();
+  fixture.thumbnails.dispose();
+});
+
+test("a card without a possible image drops its empty image frame", async (t) => {
+  const fixture = createThumbnailFixture({ isMobile: true, make: async () => null });
+  setCardThumbnails(fixture.thumbnails);
+  t.after(() => setCardThumbnails(null));
+  const card = await createLinkViewFixture(t, async () => ({
+    text: "Photo note",
+    imageUrl: "app://photo.jpg",
+    imagePath: "img/photo.jpg",
+  }));
+  card.near(true);
+  await flushCardRead();
+  await flushCardRead();
+  assert.doesNotMatch(card.markup(), /twohop-links-box-media/);
+  assert.match(card.markup(), /Photo note/);
 });
 
 test("a card's popup opens off a free corner and barely covers its neighbours", () => {
