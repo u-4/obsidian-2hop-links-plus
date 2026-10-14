@@ -61,6 +61,32 @@ export class CooperativeTask {
   }
 }
 
+/**
+ * Work written as a generator that yields a rough cost after each small step.
+ * The same steps can run to the end at once (runSteps) or give the main thread
+ * back between slices (runStepsCooperatively).
+ */
+export type Steps<T> = Generator<number, T, void>;
+
+export function runSteps<T>(steps: Steps<T>): T {
+  for (;;) {
+    const step = steps.next();
+    if (step.done) return step.value;
+  }
+}
+
+export async function runStepsCooperatively<T>(
+  steps: Steps<T>,
+  task: CooperativeTask
+): Promise<T> {
+  for (;;) {
+    const step = steps.next();
+    if (step.done) return step.value;
+    const pause = task.checkpoint(Math.max(1, step.value));
+    if (pause) await pause;
+  }
+}
+
 export class StartupRefreshGate {
   private layoutReadyAt: number | null = null;
   private firstRefreshStarted = false;

@@ -1,4 +1,5 @@
 import type { SortOrder } from "./settings/sortOptions";
+import { runSteps, Steps } from "./performance";
 
 /**
  * Related-page ordering modelled on Cosense's related page list.
@@ -88,6 +89,16 @@ export function compareRelatedPages(
 }
 
 export function buildRelatedPages(input: RelatedInput): RelatedResult {
+  return runSteps(relatedPageSteps(input));
+}
+
+/**
+ * buildRelatedPages as small steps. Each yield reports roughly how much work
+ * the step did, so a caller can give the main thread back on big hub notes.
+ */
+export function* relatedPageSteps(
+  input: RelatedInput
+): Steps<RelatedResult> {
   const { activePath, headwords } = input;
   const isCandidate = (path: string) =>
     path !== activePath && !input.isExcluded(path);
@@ -102,12 +113,21 @@ export function buildRelatedPages(input: RelatedInput): RelatedResult {
   });
   const rankCount = 2 + headwords.length;
 
+  // Work done since the last yield: one per new page plus its links scanned.
+  let cost = 0;
+  const takeCost = (): number => {
+    const done = cost + 1;
+    cost = 0;
+    return done;
+  };
+
   const pages = new Map<string, RelatedPage>();
   const pageOf = (path: string): RelatedPage => {
     let page = pages.get(path);
     if (!page) {
       const isLinkTo = linkTo.has(path);
       const isLinkFrom = linkFrom.has(path);
+      cost++;
       page = {
         path,
         ...input.infoOf(path),
@@ -139,7 +159,9 @@ export function buildRelatedPages(input: RelatedInput): RelatedResult {
       relations++;
     }
     const counted = new Set<string>();
-    for (const key of input.orderedKeysOf(path)) {
+    const keys = input.orderedKeysOf(path);
+    cost += keys.length;
+    for (const key of keys) {
       const rank = headwordRank.get(key);
       if (rank === undefined || counted.has(key)) continue;
       counted.add(key);
@@ -152,7 +174,12 @@ export function buildRelatedPages(input: RelatedInput): RelatedResult {
   }
 
   const compare = compareRelatedPages(input.sortOrder);
-  const links = Array.from(oneHop, pageOf).sort(compare);
+  const linkPages: RelatedPage[] = [];
+  for (const path of oneHop) {
+    linkPages.push(pageOf(path));
+    yield takeCost();
+  }
+  const links = linkPages.sort(compare);
 
   const assigned = new Set<string>();
   const groups: RelatedGroup[] = [];
@@ -162,16 +189,19 @@ export function buildRelatedPages(input: RelatedInput): RelatedResult {
     groupedKeys.add(headword.key);
     let size = 0;
     const groupPages: RelatedPage[] = [];
-    for (const path of input.sourcesOf(headword.key)) {
+    // A copy, so the index may change while this gives the thread back.
+    for (const path of Array.from(input.sourcesOf(headword.key))) {
       if (!isCandidate(path)) continue;
       size++;
       if (oneHop.has(path) || assigned.has(path)) continue;
       assigned.add(path);
       groupPages.push(pageOf(path));
+      yield takeCost();
     }
     if (groupPages.length > 0) {
       groups.push({ headword, pages: groupPages.sort(compare), size });
     }
+    yield takeCost();
   }
 
   const regular = groups.filter((group) => group.size <= LARGE_GROUP_SIZE);
