@@ -13,7 +13,11 @@ import { readPreview } from "./preview";
 import { getTitle } from "./getTitle";
 import { loadSettings, saveSettings } from "./settings/index";
 import { Links } from "./links";
-import type { GatheredLinks } from "./links";
+import type {
+  GatheredLinks,
+  MetadataChange,
+  ResultDependencies,
+} from "./links";
 import { OpenPaneTarget } from "./types";
 import { isSortOrder } from "./settings/sortOptions";
 import type { SortOrder } from "./settings/sortOptions";
@@ -39,7 +43,6 @@ import { HOVER_EDIT_SOURCE, RelatedPopover } from "./relatedPopover";
 import { setCardHoverHandler } from "./cardHover";
 import { BodyLinkHover } from "./linkHover";
 import { TitleStrip } from "./titleStrip";
-import type { CachedMetadata } from "obsidian";
 
 const CONTAINER_CLASS = "twohop-links-container";
 const INLINE_CONTAINER_CLASS = "twohop-links-container--inline";
@@ -66,8 +69,7 @@ export default class TwohopLinksPlugin extends Plugin {
   private dataRevision = 0;
   private hasPendingMetadataRefresh = false;
   private lastGather: { key: string; result: GatheredLinks } | null = null;
-  private displayedPaths = new Set<string>();
-  private displayedLinkTexts = new Set<string>();
+  private displayed: ResultDependencies | null = null;
   readonly openFileEntity = this.openFile.bind(this);
   readonly getCardPreview = readPreview.bind(this);
   readonly getCardTitle = getTitle.bind(this);
@@ -177,14 +179,16 @@ export default class TwohopLinksPlugin extends Plugin {
     // and refresh the view only when that note relates to what is shown.
     this.registerEvent(
       this.app.metadataCache.on("changed", (file, _data, cache) => {
-        if (!this.linkSignatures.update(file.path, cache)) {
+        // A note first changed in this session (for example one arriving by
+        // sync) counts only when its links or tags differ from the index.
+        if (
+          !this.linkSignatures.update(file.path, cache, () =>
+            this.links.differsFromIndex(file.path, cache)
+          )
+        ) {
           return;
         }
-        const isRelevant = this.isRelevantMetadataChange(file, cache);
-        this.links.invalidateMetadataCaches(isRelevant);
-        if (isRelevant) {
-          this.markDisplayedDataStale();
-        }
+        this.applyNoteChange(this.links.describeChange(file.path, cache));
       })
     );
     this.registerEvent(
@@ -195,9 +199,7 @@ export default class TwohopLinksPlugin extends Plugin {
     this.registerEvent(
       this.app.metadataCache.on("deleted", (file) => {
         this.linkSignatures.delete(file.path);
-        this.links.markAllLinksDirty();
-        this.links.invalidateMetadataCaches();
-        this.markDisplayedDataStale();
+        this.applyNoteChange(this.links.noteDeleted(file.path));
       })
     );
     this.registerEvent(
@@ -312,10 +314,24 @@ export default class TwohopLinksPlugin extends Plugin {
   private registerVaultInvalidationEvents(): void {
     // Markdown creation and deletion arrive through metadataCache events, but
     // a new or removed note can change how other notes' links resolve.
+    // Only the note and the notes whose links name it are updated.
+    this.registerEvent(
+      this.app.vault.on("create", (file) => {
+        if (file instanceof TFile && file.extension === "md") {
+          this.linkSignatures.markNew(file.path);
+          this.applyNoteChange(this.links.noteCreated(file.path));
+        }
+      })
+    );
+    this.registerEvent(
+      this.app.vault.on("delete", (file) => {
+        if (file instanceof TFile && file.extension === "md") {
+          this.linkSignatures.delete(file.path);
+          this.applyNoteChange(this.links.noteDeleted(file.path));
+        }
+      })
+    );
     const onFileChanged = (file: unknown) => {
-      if (file instanceof TFile && file.extension === "md") {
-        this.links.markAllLinksDirty();
-      }
       if (file instanceof TFile && file.extension === "canvas") {
         this.links.invalidateCanvasCaches();
         this.dataRevision++;
@@ -332,13 +348,29 @@ export default class TwohopLinksPlugin extends Plugin {
       })
     );
     this.registerEvent(
-      this.app.vault.on("rename", (_file, oldPath) => {
+      this.app.vault.on("rename", (file, oldPath) => {
         this.linkSignatures.delete(oldPath);
-        this.links.markAllLinksDirty();
-        this.links.invalidateMetadataCaches();
-        this.links.invalidateCanvasCaches();
-        this.dataRevision++;
-        this.scheduleRefresh(false, METADATA_REFRESH_DEBOUNCE_MS);
+        if (!(file instanceof TFile)) {
+          // A folder: every note inside moved, so rebuild everything.
+          this.links.markAllLinksDirty();
+          this.links.invalidateMetadataCaches();
+          this.links.invalidateCanvasCaches();
+          this.dataRevision++;
+          this.scheduleRefresh(false, METADATA_REFRESH_DEBOUNCE_MS);
+          return;
+        }
+        if (file.extension === "canvas") {
+          onFileChanged(file);
+        }
+        if (file.extension === "md") {
+          this.linkSignatures.markNew(file.path);
+          const changes = this.links.noteRenamed(oldPath, file.path);
+          if (this.applyNoteChange(changes)) {
+            // Links that Obsidian does not re-resolve still need a redraw.
+            this.dataRevision++;
+            this.scheduleRefresh(false, METADATA_REFRESH_DEBOUNCE_MS);
+          }
+        }
       })
     );
   }
@@ -349,80 +381,43 @@ export default class TwohopLinksPlugin extends Plugin {
   }
 
   /**
+   * Drops the cached results the change can alter and, when it can alter
+   * what is shown, marks the view for a refresh. Returns that relevance.
+   */
+  private applyNoteChange(change: MetadataChange | MetadataChange[]): boolean {
+    const changes = Array.isArray(change) ? change : [change];
+    const isRelevant = changes.some((item) => this.isRelevantChange(item));
+    this.links.invalidateMetadataCaches(isRelevant, changes);
+    if (isRelevant) {
+      this.markDisplayedDataStale();
+    }
+    return isRelevant;
+  }
+
+  /**
    * A changed note matters when it is the active note, is shown in the view,
    * or now links to the active note or one of the active note's links.
    */
-  private isRelevantMetadataChange(
-    file: TFile,
-    cache: CachedMetadata | null | undefined
-  ): boolean {
+  private isRelevantChange(change: MetadataChange): boolean {
     const activePath = this.lastRenderedFilePath;
-    if (!activePath || file.path === activePath) {
+    if (!activePath || change.path === activePath) {
       return true;
     }
-    if (
-      this.displayedPaths.has(file.path) ||
-      this.displayedLinkTexts.has(file.basename)
-    ) {
-      return true;
+    const displayed = this.displayed;
+    if (!displayed || displayed.activePath !== activePath) {
+      // The open note's result is still being gathered; a change it may
+      // depend on keeps that result out of the cache.
+      return change.targets.has(activePath);
     }
-    for (const reference of [
-      ...(cache?.links ?? []),
-      ...(cache?.embeds ?? []),
-      ...(cache?.frontmatterLinks ?? []),
-    ]) {
-      const linkText = removeBlockReference(reference.link);
-      if (this.displayedLinkTexts.has(linkText)) {
-        return true;
-      }
-      const target = this.app.metadataCache.getFirstLinkpathDest(
-        linkText,
-        file.path
-      );
-      if (
-        target &&
-        (target.path === activePath || this.displayedPaths.has(target.path))
-      ) {
-        return true;
-      }
-    }
-    return false;
+    return this.links.affects(displayed, change);
   }
 
   private rememberDisplayedResult(
     activeFile: TFile,
     result: GatheredLinks
   ): void {
-    const paths = new Set<string>([activeFile.path]);
-    const linkTexts = new Set<string>();
-    const add = (entity: FileEntity) => {
-      if (entity.targetPath) {
-        paths.add(entity.targetPath);
-      } else {
-        const linkText = removeBlockReference(entity.linkText);
-        const resolved = this.app.metadataCache.getFirstLinkpathDest(
-          linkText,
-          entity.sourcePath
-        );
-        if (resolved) {
-          paths.add(resolved.path);
-        } else {
-          linkTexts.add(linkText);
-        }
-      }
-    };
-    result.links.forEach(add);
-    result.newLinks.forEach(add);
-    for (const twoHopLink of result.twoHopLinks) {
-      add(twoHopLink.link);
-      twoHopLink.fileEntities.forEach(add);
-    }
-    for (const propertiesLinks of result.tagLinksList) {
-      propertiesLinks.fileEntities.forEach(add);
-    }
-    this.displayedPaths = paths;
-    this.displayedLinkTexts = linkTexts;
-    for (const path of paths) {
+    this.displayed = this.links.describeResult(activeFile, result);
+    for (const path of this.displayed.paths) {
       const file = this.getFileByPath(path);
       if (file) {
         this.linkSignatures.rememberIfUnknown(

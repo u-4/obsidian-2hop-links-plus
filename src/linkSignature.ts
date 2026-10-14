@@ -50,6 +50,9 @@ export function getLinkSignature(
   ].join("\u0002");
 }
 
+// Never equal to a real signature, which holds no NUL character.
+const NEW_NOTE = "\u0000new";
+
 /**
  * Remembers the last signature seen for each note so metadata updates that do
  * not change links can be ignored.
@@ -59,12 +62,28 @@ export class LinkSignatureTracker {
 
   constructor(private readonly getOptions: () => LinkSignatureOptions) {}
 
-  /** Records the note's signature and returns true when it changed. */
-  update(path: string, cache: CachedMetadata | null | undefined): boolean {
+  /**
+   * Records the note's signature and returns true when it changed. For a
+   * note not seen before in this session there is nothing to compare with;
+   * isChangedWhenUnknown then decides (by default it counts as a change).
+   */
+  update(
+    path: string,
+    cache: CachedMetadata | null | undefined,
+    isChangedWhenUnknown?: () => boolean
+  ): boolean {
     const next = getLinkSignature(cache, this.getOptions());
     const previous = this.signatures.get(path);
     this.signatures.set(path, next);
+    if (previous === undefined) {
+      return isChangedWhenUnknown ? isChangedWhenUnknown() : true;
+    }
     return previous !== next;
+  }
+
+  /** The note is new; its next update always counts as a change. */
+  markNew(path: string): void {
+    this.signatures.set(path, NEW_NOTE);
   }
 
   /** Records the note's signature without reporting a change. */
