@@ -1,4 +1,5 @@
 import { App, TFile } from "obsidian";
+import type { CachedMetadata } from "obsidian";
 import { FileEntity } from "./model/FileEntity";
 import { TwohopLink } from "./model/TwohopLink";
 import { PropertiesLinks } from "./model/PropertiesLinks";
@@ -17,9 +18,12 @@ import {
   relatedPageSteps,
 } from "./cosenseRelated";
 import {
+  expandTags,
   fileLinkKey,
   LinkIndex,
   LinkIndexStats,
+  noteNameOf,
+  pathOfLinkKey,
   unresolvedLinkKey,
 } from "./linkIndex";
 import {
@@ -63,15 +67,49 @@ export interface LinksPerformanceStats extends LinkIndexStats {
   lastGatherMs: number;
 }
 
+/** What a result shows, to tell which later changes can alter it. */
+export interface ResultDependencies {
+  activePath: string;
+  /** The open note and every note shown (cards and group headers). */
+  paths: Set<string>;
+  /** Shown links to notes that do not exist, as written. */
+  linkTexts: Set<string>;
+  /** Lower-cased names of all of the above. */
+  names: Set<string>;
+  /** The open note's tags, when the Tags section is on. */
+  tags: Set<string>;
+}
+
+/** A change to one note, described once and checked against each result. */
+export interface MetadataChange {
+  path: string;
+  basename: string;
+  name: string;
+  /** Links in the note's new metadata, without subpath. */
+  linkTexts: string[];
+  /** Notes those links resolve to, and notes it linked to before. */
+  targets: Set<string>;
+  /** Tags the note has now or had before. */
+  tags: string[];
+  /** The note was created, deleted or renamed. */
+  structural: boolean;
+}
+
 interface CachedGatherResult {
   createdAt: number;
   result: GatheredLinks;
+  dependencies: ResultDependencies;
 }
+
+// Beyond this many changes during one gather, its result is not cached.
+const MAX_CHANGES_DURING_GATHER = 200;
 
 interface PendingGather {
   key: string;
   controller: AbortController;
   promise: Promise<GatheredLinks>;
+  /** Changes that arrived meanwhile; null when anything may have changed. */
+  seen: { changes: MetadataChange[] | null };
 }
 
 type CanvasFileNode = {
@@ -127,8 +165,11 @@ export class Links {
   app: App;
   settings: TwohopPluginSettings;
   private readonly linkIndex: LinkIndex;
-  private metadataRevision = 0;
   private canvasRevision = 0;
+  private readonly dependencies = new WeakMap<
+    GatheredLinks,
+    ResultDependencies
+  >();
   private resultCache = new Map<string, CachedGatherResult>();
   private pendingGather: PendingGather | null = null;
   private cachedCanvasIndex: CachedCanvasIndex | null = null;
@@ -159,21 +200,199 @@ export class Links {
     this.linkIndex.markDirty(path);
   }
 
-  /** Notes were created, deleted or renamed. */
+  /** Anything may have changed (a folder was renamed). */
   markAllLinksDirty(): void {
     this.linkIndex.markAllDirty();
   }
 
+  /** A note was created; returns the change to check results against. */
+  noteCreated(path: string): MetadataChange {
+    this.linkIndex.noteCreated(path);
+    const file = this.getFile(path);
+    return this.describeChange(
+      path,
+      file ? this.app.metadataCache.getFileCache(file) : null,
+      true
+    );
+  }
+
+  /** A note was deleted; returns the change to check results against. */
+  noteDeleted(path: string): MetadataChange {
+    // Described first, while the index still knows what the note linked to.
+    const change = this.describeChange(path, null, true);
+    this.linkIndex.noteDeleted(path);
+    return change;
+  }
+
+  noteRenamed(oldPath: string, newPath: string): MetadataChange[] {
+    const removed = this.noteDeleted(oldPath);
+    return [removed, this.noteCreated(newPath)];
+  }
+
   /**
-   * Drops results built from older metadata. A change unrelated to the shown
-   * note keeps the gather in progress, whose result stays valid for display.
+   * Whether this metadata gives the note other links or tags than the index
+   * holds; for a note's first change in a session.
    */
-  invalidateMetadataCaches(cancelActiveGather = true): void {
-    this.metadataRevision++;
-    this.resultCache.clear();
+  differsFromIndex(
+    path: string,
+    cache: CachedMetadata | null | undefined
+  ): boolean {
+    return this.linkIndex.differsFrom(path, cache);
+  }
+
+  /**
+   * Drops results the change can alter, or every result when no change is
+   * given. A change unrelated to the shown note keeps the gather in
+   * progress, whose result stays valid for display; it is cached only when
+   * nothing that arrived meanwhile affects it.
+   */
+  invalidateMetadataCaches(
+    cancelActiveGather = true,
+    change?: MetadataChange | MetadataChange[]
+  ): void {
+    const changes =
+      change === undefined ? null : Array.isArray(change) ? change : [change];
+    if (changes === null) {
+      this.resultCache.clear();
+    } else {
+      for (const [key, cached] of this.resultCache) {
+        if (changes.some((item) => this.affects(cached.dependencies, item))) {
+          this.resultCache.delete(key);
+        }
+      }
+    }
+    const seen = this.pendingGather?.seen;
+    if (seen) {
+      if (changes === null || seen.changes === null) {
+        seen.changes = null;
+      } else {
+        seen.changes.push(...changes);
+        if (seen.changes.length > MAX_CHANGES_DURING_GATHER) {
+          seen.changes = null;
+        }
+      }
+    }
     if (cancelActiveGather) {
       this.cancelActiveGather();
     }
+  }
+
+  /** Describes a change to a note's metadata (cache null when deleted). */
+  describeChange(
+    path: string,
+    cache: CachedMetadata | null | undefined,
+    structural = false
+  ): MetadataChange {
+    const linkTexts: string[] = [];
+    const targets = new Set<string>();
+    for (const reference of [
+      ...(cache?.links ?? []),
+      ...(cache?.embeds ?? []),
+      ...(cache?.frontmatterLinks ?? []),
+    ]) {
+      const linkText = removeBlockReference(reference.link);
+      linkTexts.push(linkText);
+      const target = this.app.metadataCache.getFirstLinkpathDest(
+        linkText,
+        path
+      );
+      if (target) targets.add(target.path);
+    }
+    for (const key of this.linkIndex.peekOutKeys(path)) {
+      const target = pathOfLinkKey(key);
+      if (target) targets.add(target);
+    }
+    const name = path.split("/").pop() ?? path;
+    return {
+      path,
+      basename: name.replace(/\.md$/i, ""),
+      name: noteNameOf(path),
+      linkTexts,
+      targets,
+      tags: Array.from(
+        new Set([...expandTags(cache), ...this.linkIndex.peekTags(path)])
+      ),
+      structural,
+    };
+  }
+
+  /**
+   * Whether the change can alter a result: it is about the open note or a
+   * shown note, links to one of them, writes a shown missing link, shares
+   * the open note's tags, or (created, deleted or renamed) has the name of a
+   * shown link.
+   */
+  affects(dependencies: ResultDependencies, change: MetadataChange): boolean {
+    if (
+      change.path === dependencies.activePath ||
+      dependencies.paths.has(change.path) ||
+      dependencies.linkTexts.has(change.basename) ||
+      (change.structural && dependencies.names.has(change.name))
+    ) {
+      return true;
+    }
+    for (const linkText of change.linkTexts) {
+      if (dependencies.linkTexts.has(linkText)) return true;
+    }
+    for (const target of change.targets) {
+      if (dependencies.paths.has(target)) return true;
+    }
+    for (const tag of change.tags) {
+      if (dependencies.tags.has(tag)) return true;
+    }
+    return false;
+  }
+
+  /** What the result shows for the open note (remembered per result). */
+  describeResult(
+    activeFile: TFile | null,
+    result: GatheredLinks
+  ): ResultDependencies {
+    const known = this.dependencies.get(result);
+    if (known) return known;
+    const activePath = activeFile?.path ?? "";
+    const paths = new Set<string>(activePath ? [activePath] : []);
+    const linkTexts = new Set<string>();
+    const add = (entity: FileEntity) => {
+      if (entity.targetPath) {
+        paths.add(entity.targetPath);
+        return;
+      }
+      const linkText = removeBlockReference(entity.linkText);
+      const resolved = this.app.metadataCache.getFirstLinkpathDest(
+        linkText,
+        entity.sourcePath
+      );
+      if (resolved) {
+        paths.add(resolved.path);
+      } else {
+        linkTexts.add(linkText);
+      }
+    };
+    result.links.forEach(add);
+    result.newLinks.forEach(add);
+    for (const twoHopLink of result.twoHopLinks) {
+      add(twoHopLink.link);
+      twoHopLink.fileEntities.forEach(add);
+    }
+    for (const propertiesLinks of result.tagLinksList) {
+      propertiesLinks.fileEntities.forEach(add);
+    }
+    const names = new Set<string>();
+    for (const item of [...paths, ...linkTexts]) names.add(noteNameOf(item));
+    const dependencies: ResultDependencies = {
+      activePath,
+      paths,
+      linkTexts,
+      names,
+      tags: new Set(
+        activePath && this.settings.showTagsLinks
+          ? this.linkIndex.tagsOf(activePath)
+          : []
+      ),
+    };
+    this.dependencies.set(result, dependencies);
+    return dependencies;
   }
 
   invalidateCanvasCaches(): void {
@@ -229,10 +448,10 @@ export class Links {
       showBackwardConnectedLinks: this.settings.showBackwardConnectedLinks,
       showTagsLinks: this.settings.showTagsLinks,
     });
-    // Metadata changes that affect links bump metadataRevision, so text-only
-    // edits of the active note keep its cached result.
+    // Metadata changes drop the cached results they can alter, so text-only
+    // edits and unrelated notes keep them.
     const fileKey = activeFile ? activeFile.path : "";
-    return `${this.metadataRevision}:${this.canvasRevision}:${fileKey}:${settingsKey}`;
+    return `${this.canvasRevision}:${fileKey}:${settingsKey}`;
   }
 
   private getCachedGatherResult(key: string): GatheredLinks | null {
@@ -250,8 +469,12 @@ export class Links {
     return cached.result;
   }
 
-  private cacheGatherResult(key: string, result: GatheredLinks): void {
-    this.resultCache.set(key, { createdAt: Date.now(), result });
+  private cacheGatherResult(
+    key: string,
+    result: GatheredLinks,
+    dependencies: ResultDependencies
+  ): void {
+    this.resultCache.set(key, { createdAt: Date.now(), result, dependencies });
     while (this.resultCache.size > MAX_RESULT_CACHE_ENTRIES) {
       const oldestKey = this.resultCache.keys().next().value;
       if (typeof oldestKey !== "string") break;
@@ -335,13 +558,18 @@ export class Links {
       return cached;
     }
 
-    if (this.pendingGather?.key === key) {
+    // Join the gather in progress unless notes changed since it started.
+    if (
+      this.pendingGather?.key === key &&
+      this.pendingGather.seen.changes?.length === 0
+    ) {
       this.joinedComputations++;
       return this.pendingGather.promise;
     }
 
     this.cancelActiveGather();
     const controller = new AbortController();
+    const seen: PendingGather["seen"] = { changes: [] };
     const startedAt = Date.now();
     this.resultComputations++;
 
@@ -349,7 +577,14 @@ export class Links {
       .then((result) => {
         throwIfCalculationCancelled(controller.signal);
         this.lastGatherMs = Math.max(0, Date.now() - startedAt);
-        this.cacheGatherResult(key, result);
+        const dependencies = this.describeResult(activeFile, result);
+        const changes = seen.changes;
+        if (
+          changes !== null &&
+          !changes.some((change) => this.affects(dependencies, change))
+        ) {
+          this.cacheGatherResult(key, result, dependencies);
+        }
         return result;
       })
       .catch((error: unknown) => {
@@ -364,7 +599,7 @@ export class Links {
         }
       });
 
-    this.pendingGather = { key, controller, promise };
+    this.pendingGather = { key, controller, promise, seen };
     return promise;
   }
 

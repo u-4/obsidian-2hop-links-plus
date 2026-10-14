@@ -74,6 +74,17 @@ function isNotePath(path: string): boolean {
   return path.toLowerCase().endsWith(".md");
 }
 
+/** The lower-cased note name a link or path ends in, as links match it. */
+export function noteNameOf(pathOrLinkText: string): string {
+  return (pathOrLinkText.split("/").pop() ?? "")
+    .replace(/\.md$/i, "")
+    .toLowerCase();
+}
+
+function noteNameOfKey(key: LinkKey): string {
+  return noteNameOf(key.slice(2));
+}
+
 export function expandTags(cache: CachedMetadata | null | undefined): string[] {
   const tags: string[] = [];
   const addTag = (tag: string) => {
@@ -109,7 +120,8 @@ export interface LinkIndexStats {
 /**
  * Who links where, for every note in the vault, built from Obsidian's resolved
  * and unresolved link tables. After the first build only notes that Obsidian
- * re-resolved are updated. Note bodies are never read.
+ * re-resolved, or that were created, deleted or renamed (and the notes whose
+ * links name them), are updated. Note bodies are never read.
  */
 export class LinkIndex {
   private readonly outKeys = new Map<string, Set<LinkKey>>();
@@ -118,6 +130,8 @@ export class LinkIndex {
   private readonly pathsByTag = new Map<string, Set<string>>();
   private readonly orderedKeys = new Map<string, LinkKey[]>();
   private readonly dirtyPaths = new Set<string>();
+  /** Names of notes created, deleted or renamed since the last update. */
+  private readonly changedNames = new Set<string>();
   private needsRebuild = true;
   /** A rebuild in progress; whoever needs the index next carries it on. */
   private build: Steps<void> | null = null;
@@ -135,11 +149,60 @@ export class LinkIndex {
     this.orderedKeys.delete(path);
   }
 
-  /** Notes were created, deleted or renamed; other notes' links may change. */
+  /**
+   * A note was created. It is read before the next query, and so is every
+   * note whose link names it: such links may now resolve to it.
+   */
+  noteCreated(path: string): void {
+    this.markDirty(path);
+    this.changedNames.add(noteNameOf(path));
+  }
+
+  /**
+   * A note was deleted. Its entries are dropped before the next query, and
+   * notes linking to it or to its name are read again.
+   */
+  noteDeleted(path: string): void {
+    this.markDirty(path);
+    this.changedNames.add(noteNameOf(path));
+  }
+
+  noteRenamed(oldPath: string, newPath: string): void {
+    this.noteDeleted(oldPath);
+    this.noteCreated(newPath);
+  }
+
+  /** Everything may have changed (a folder was renamed); rebuild it all. */
   markAllDirty(): void {
     this.needsRebuild = true;
     this.dirtyPaths.clear();
+    this.changedNames.clear();
     this.orderedKeys.clear();
+  }
+
+  /** Link targets the index holds for the note now, without updating it. */
+  peekOutKeys(path: string): ReadonlySet<LinkKey> {
+    return this.outKeys.get(path) ?? EMPTY_SET;
+  }
+
+  /** Tags the index holds for the note now, without updating it. */
+  peekTags(path: string): readonly string[] {
+    return this.tagsByPath.get(path) ?? EMPTY_ARRAY;
+  }
+
+  /**
+   * Whether this metadata gives the note other links or tags than the index
+   * holds. Used for a note's first change in a session, when there is no
+   * earlier signature to compare with. Unsure cases count as different.
+   */
+  differsFrom(path: string, cache: CachedMetadata | null | undefined): boolean {
+    if (this.needsRebuild || this.build || this.dirtyPaths.has(path)) {
+      return true;
+    }
+    const keys = new Set(cache ? this.resolveReferences(cache, path) : []);
+    keys.delete(fileLinkKey(path));
+    if (!sameMembers(keys, this.peekOutKeys(path))) return true;
+    return !sameMembers(new Set(expandTags(cache)), new Set(this.peekTags(path)));
   }
 
   getStats(): LinkIndexStats {
@@ -179,6 +242,14 @@ export class LinkIndex {
         continue;
       }
       yield step.value;
+    }
+    if (this.changedNames.size > 0) {
+      // Links written as that name may now resolve differently.
+      for (const [key, paths] of this.sources) {
+        if (!this.changedNames.has(noteNameOfKey(key))) continue;
+        for (const path of paths) this.markDirty(path);
+      }
+      this.changedNames.clear();
     }
     if (this.dirtyPaths.size === 0) {
       return;
@@ -277,6 +348,7 @@ export class LinkIndex {
     this.pathsByTag.clear();
     this.orderedKeys.clear();
     this.dirtyPaths.clear();
+    this.changedNames.clear();
 
     const { resolvedLinks, unresolvedLinks } = this.app.metadataCache;
     const paths = new Set<string>([
@@ -300,13 +372,19 @@ export class LinkIndex {
   }
 
   private updatePath(path: string): void {
-    this.setOutKeys(path, this.readOutKeys(path));
     const file = this.app.vault.getAbstractFileByPath(path);
-    const cache =
-      file && "extension" in file
-        ? this.app.metadataCache.getFileCache(file as TFile)
-        : null;
-    this.setTags(path, expandTags(cache));
+    if (!file || !("extension" in file)) {
+      // Deleted or renamed away: nothing may still show it.
+      this.setOutKeys(path, new Set());
+      this.setTags(path, []);
+      this.orderedKeys.delete(path);
+      return;
+    }
+    this.setOutKeys(path, this.readOutKeys(path));
+    this.setTags(
+      path,
+      expandTags(this.app.metadataCache.getFileCache(file as TFile))
+    );
   }
 
   private readOutKeys(path: string): Set<LinkKey> {
@@ -368,6 +446,14 @@ export class LinkIndex {
       set.add(path);
     }
   }
+}
+
+function sameMembers<T>(a: ReadonlySet<T>, b: ReadonlySet<T>): boolean {
+  if (a.size !== b.size) return false;
+  for (const item of a) {
+    if (!b.has(item)) return false;
+  }
+  return true;
 }
 
 const EMPTY_SET: ReadonlySet<never> = new Set();

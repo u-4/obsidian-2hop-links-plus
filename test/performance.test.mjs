@@ -1019,6 +1019,128 @@ test("the link index updates only the note that changed", () => {
   assert.equal(index.getStats().patches, 1);
 });
 
+function addNote(vault, name, note) {
+  vault.notes[name] = note;
+  vault.files.set(`${name}.md`, new TFile(`${name}.md`));
+  vault.rebuild();
+}
+
+function removeNote(vault, name) {
+  delete vault.notes[name];
+  vault.files.delete(`${name}.md`);
+  vault.rebuild();
+}
+
+test("creating, deleting and renaming notes updates the link index without a rebuild", () => {
+  const vault = cosenseVault();
+  const index = new LinkIndex(vault.app);
+  assert.ok(index.sourcesOf("u:missing").has("G.md"));
+
+  // Notes whose links name the new note are reread even before Obsidian
+  // reports them re-resolved.
+  addNote(vault, "Missing", { links: ["B"] });
+  index.noteCreated("Missing.md");
+  assert.deepEqual(Array.from(index.sourcesOf("p:Missing.md")).sort(), ["A.md", "G.md"]);
+  assert.equal(index.sourcesOf("u:missing").size, 0);
+  assert.ok(index.sourcesOf("p:B.md").has("Missing.md"));
+
+  removeNote(vault, "C");
+  index.noteDeleted("C.md");
+  assert.equal(index.sourcesOf("p:C.md").size, 0);
+  assert.deepEqual(Array.from(index.sourcesOf("u:c")).sort(), ["A.md", "D.md", "E.md"]);
+  assert.ok(!index.sourcesOf("p:A.md").has("C.md"), "the deleted note's links are gone");
+
+  vault.notes.H2 = vault.notes.H;
+  removeNote(vault, "H");
+  addNote(vault, "H2", vault.notes.H2);
+  index.noteRenamed("H.md", "H2.md");
+  assert.ok(index.sourcesOf("p:B.md").has("H2.md"));
+  assert.ok(!index.sourcesOf("p:B.md").has("H.md"));
+  assert.equal(index.getStats().builds, 1);
+});
+
+test("a note's first change counts only when its links or tags differ from the index", () => {
+  const { app, files } = cosenseVault();
+  const index = new LinkIndex(app);
+  index.ensureFresh();
+  const cacheOfD = app.metadataCache.getFileCache(files.get("D.md"));
+  assert.equal(index.differsFrom("D.md", cacheOfD), false);
+  assert.equal(index.differsFrom("D.md", metadataWithLinks(["C", "B", "E"])), true);
+  assert.equal(index.differsFrom("D.md", { ...cacheOfD, tags: [{ tag: "#new" }] }), true);
+
+  const tracker = new LinkSignatureTracker(() => signatureOptions);
+  const unchanged = () => index.differsFrom("D.md", cacheOfD);
+  assert.equal(tracker.update("D.md", cacheOfD, unchanged), false);
+  assert.equal(tracker.update("D.md", metadataWithLinks(["C"]), unchanged), true);
+  tracker.markNew("New.md");
+  assert.equal(tracker.update("New.md", metadataWithLinks([]), () => false), true);
+});
+
+test("changes to unrelated notes keep cached results; related ones drop them", async () => {
+  const vault = createLinkedApp({
+    A: { links: ["B", "C", "Lonely"] },
+    B: { links: [] },
+    C: { links: [] },
+    D: { links: ["B"] },
+    X: { links: ["Y"] },
+    Y: { links: [] },
+  });
+  const { app, files, notes, rebuild } = vault;
+  const links = new Links(app, createSettings());
+  const edit = (name, nextLinks) => {
+    const path = `${name}.md`;
+    notes[name].links = nextLinks;
+    rebuild();
+    const change = links.describeChange(path, app.metadataCache.getFileCache(files.get(path)));
+    links.markLinksDirty(path);
+    links.invalidateMetadataCaches(false, change);
+  };
+  const first = await links.gatherTwoHopLinks(files.get("A.md"));
+  await links.gatherTwoHopLinks(files.get("B.md"));
+
+  edit("X", ["Y", "Z"]);
+  assert.equal(await links.gatherTwoHopLinks(files.get("A.md")), first,
+    "a note A does not show and that links nowhere near A keeps A's result");
+  edit("X", ["C"]);
+  const second = await links.gatherTwoHopLinks(files.get("A.md"));
+  assert.notEqual(second, first);
+  assert.ok(second.twoHopLinks.some((group) =>
+    group.fileEntities.some((entity) => entity.targetPath === "X.md")));
+
+  addNote(vault, "Lonely", { links: [] });
+  links.invalidateMetadataCaches(false, links.noteCreated("Lonely.md"));
+  const third = await links.gatherTwoHopLinks(files.get("A.md"));
+  assert.notEqual(third, second, "a new note named like a shown missing link drops it");
+  assert.ok(!third.newLinks.some((entity) => entity.linkText === "Lonely"));
+
+  removeNote(vault, "D");
+  links.invalidateMetadataCaches(false, links.noteDeleted("D.md"));
+  const fourth = await links.gatherTwoHopLinks(files.get("A.md"));
+  assert.notEqual(fourth, third);
+  assert.ok(!fourth.twoHopLinks.some((group) =>
+    group.fileEntities.some((entity) => entity.targetPath === "D.md")));
+  assert.equal(links.getPerformanceStats().builds, 1);
+});
+
+test("a result is not cached when a change it depends on arrives during the gather", async () => {
+  const vault = cosenseVault();
+  const { app, files } = vault;
+  const links = new Links(app, createSettings(), { yieldEvery: 1, maxSliceMs: 0 });
+  const pending = links.gatherTwoHopLinks(files.get("A.md"));
+  links.invalidateMetadataCaches(false, links.describeChange("E.md", metadataWithLinks(["C"])));
+  await pending;
+  await links.gatherTwoHopLinks(files.get("A.md"));
+  assert.equal(links.getPerformanceStats().resultComputations, 2);
+
+  const other = new Links(app, createSettings(), { yieldEvery: 1, maxSliceMs: 0 });
+  const unrelated = other.gatherTwoHopLinks(files.get("A.md"));
+  other.invalidateMetadataCaches(false, other.describeChange("Z.md", metadataWithLinks(["Q"])));
+  await unrelated;
+  await other.gatherTwoHopLinks(files.get("A.md"));
+  assert.equal(other.getPerformanceStats().resultComputations, 1);
+  assert.equal(other.getPerformanceStats().resultCacheHits, 1);
+});
+
 test("saved sort orders from earlier versions map to the new choices", () => {
   assert.equal(migrateSortOrder("random"), "related");
   assert.equal(migrateSortOrder("relatedScoreDesc"), "related");
