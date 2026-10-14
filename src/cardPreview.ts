@@ -8,6 +8,8 @@ export interface CardPreview {
   text: string;
   /** Resource URL of a local image, or a YouTube / web image URL. */
   imageUrl: string | null;
+  /** Vault path of a local image, so cards can show a small thumbnail. */
+  imagePath?: string | null;
 }
 
 const MAX_PREVIEW_BYTES = 512 * 1024;
@@ -147,7 +149,10 @@ export class PreviewStore {
     const cached = this.get(file);
     if (cached !== undefined) return Promise.resolve(cached);
     if (file.stat.size > MAX_PREVIEW_BYTES) {
-      return Promise.resolve({ text: "", imageUrl: this.localImageUrl(file) });
+      return Promise.resolve({
+        text: "",
+        ...(this.localImage(file) ?? { imageUrl: null, imagePath: null }),
+      });
     }
     const key = snapshotKey(file);
     const existing = this.jobs.get(key);
@@ -181,9 +186,16 @@ export class PreviewStore {
     this.cache.clear();
   }
 
-  private localImageUrl(file: TFile): string | null {
+  private localImage(
+    file: TFile
+  ): { imageUrl: string; imagePath: string } | null {
     const image = firstLocalImage(this.app, file);
-    return image ? this.app.vault.getResourcePath(image) : null;
+    return image
+      ? {
+          imageUrl: this.app.vault.getResourcePath(image),
+          imagePath: image.path,
+        }
+      : null;
   }
 
   private schedule(): void {
@@ -225,9 +237,12 @@ export class PreviewStore {
           ) {
             return null;
           }
-          const preview = {
+          const preview: CardPreview = {
             text: excerpt(body),
-            imageUrl: this.localImageUrl(latest) ?? findWebImage(body),
+            ...(this.localImage(latest) ?? {
+              imageUrl: findWebImage(body),
+              imagePath: null,
+            }),
           };
           this.cache.set(job.key, preview);
           while (this.cache.size > MAX_CACHED_PREVIEWS) {

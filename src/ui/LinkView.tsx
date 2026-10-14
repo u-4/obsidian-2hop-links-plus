@@ -5,6 +5,7 @@ import { App, Menu } from "obsidian";
 import { getCardHoverHandler } from "../cardHover";
 import { GetCardPreview, OpenPaneTarget } from "../types";
 import type { CardPreview } from "../cardPreview";
+import { getCardThumbnails, ThumbnailLease } from "../cardThumbnail";
 
 interface LinkViewProps {
   fileEntity: FileEntity;
@@ -21,6 +22,8 @@ interface LinkViewState {
   preview: CardPreview | null;
   isNearViewport: boolean;
   isImageBroken: boolean;
+  /** Small image for a local image, while the card is near the screen. */
+  thumbnailUrl: string | null;
   title: string | null;
   mouseDown: boolean;
   dragging: boolean;
@@ -35,6 +38,7 @@ export default class LinkView extends React.Component<
   private readonly cardRef = React.createRef<HTMLDivElement>();
   private observer: IntersectionObserver | null = null;
   private isNearViewport = false;
+  private imageLease: { path: string; lease: ThumbnailLease } | null = null;
   isMobile: boolean;
 
   constructor(props: LinkViewProps) {
@@ -43,6 +47,7 @@ export default class LinkView extends React.Component<
       preview: null,
       isNearViewport: false,
       isImageBroken: false,
+      thumbnailUrl: null,
       title: null,
       mouseDown: false,
       dragging: false,
@@ -56,16 +61,83 @@ export default class LinkView extends React.Component<
     void this.loadCard();
   }
 
-  componentDidUpdate(prevProps: LinkViewProps): void {
+  componentDidUpdate(
+    prevProps: LinkViewProps,
+    prevState: Readonly<LinkViewState>
+  ): void {
     if (this.fileEntityKey(prevProps.fileEntity) !== this.fileEntityKey()) {
       this.setState({ preview: null, isImageBroken: false, title: null });
       void this.loadCard();
+    }
+    if (
+      prevState.preview !== this.state.preview ||
+      prevState.isNearViewport !== this.state.isNearViewport ||
+      prevState.isImageBroken !== this.state.isImageBroken
+    ) {
+      this.syncImageLease();
     }
   }
 
   componentWillUnmount(): void {
     this.abortController?.abort();
     this.observer?.disconnect();
+    this.releaseImage();
+  }
+
+  /**
+   * Holds a thumbnail of the card's local image while the image is mounted,
+   * and lets it go when the card leaves the screen or changes.
+   */
+  private syncImageLease(): void {
+    const thumbnails = getCardThumbnails();
+    const { preview, isNearViewport, isImageBroken } = this.state;
+    const wanted = preview?.imagePath ?? null;
+    const imageUrl = preview?.imageUrl ?? null;
+    if (
+      !thumbnails ||
+      !wanted ||
+      !imageUrl ||
+      !isNearViewport ||
+      isImageBroken
+    ) {
+      this.releaseImage();
+      return;
+    }
+    if (this.imageLease?.path === wanted) return;
+    this.releaseImage();
+    const lease = thumbnails.acquire(wanted, imageUrl);
+    this.imageLease = { path: wanted, lease };
+    const show = (url: string | null) => {
+      if (this.imageLease?.lease !== lease) return;
+      if (url === null) {
+        this.setState({ isImageBroken: true, thumbnailUrl: null });
+      } else {
+        this.setState({ thumbnailUrl: url });
+      }
+    };
+    if (lease.url !== undefined) {
+      show(lease.url);
+    } else {
+      void lease.ready.then(show);
+    }
+  }
+
+  private releaseImage(): void {
+    if (!this.imageLease) return;
+    this.imageLease.lease.release();
+    this.imageLease = null;
+    if (this.state.thumbnailUrl !== null) {
+      this.setState({ thumbnailUrl: null });
+    }
+  }
+
+  /** The URL the card's <img> shows now, if any. */
+  private imageSource(): string | null {
+    const preview = this.state.preview;
+    if (!preview?.imageUrl) return null;
+    return preview.imagePath && getCardThumbnails()
+      ? this.state.thumbnailUrl
+      : preview.imageUrl;
   }
 
   private observeViewport(): void {
@@ -262,9 +334,9 @@ export default class LinkView extends React.Component<
         {this.state.preview?.imageUrl && !this.state.isImageBroken && (
           <div className="twohop-links-box-media">
             {/* Keep the frame and cached preview; only mount the image nearby. */}
-            {this.state.isNearViewport && (
+            {this.state.isNearViewport && this.imageSource() && (
               <img
-                src={this.state.preview.imageUrl}
+                src={this.imageSource() ?? undefined}
                 alt=""
                 loading="lazy"
                 decoding="async"

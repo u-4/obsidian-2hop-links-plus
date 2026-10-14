@@ -39,6 +39,7 @@ import {
 import { chooseInlineRestoreLeaf } from "./inlineRestoreLeaf";
 import { LinkSignatureTracker } from "./linkSignature";
 import { PreviewStore } from "./cardPreview";
+import { CardThumbnails, setCardThumbnails } from "./cardThumbnail";
 import { HOVER_EDIT_SOURCE, RelatedPopover } from "./relatedPopover";
 import { setCardHoverHandler } from "./cardHover";
 import { BodyLinkHover } from "./linkHover";
@@ -60,6 +61,7 @@ export default class TwohopLinksPlugin extends Plugin {
   showLinksInMarkdown: boolean;
   links: Links;
   previewStore: PreviewStore;
+  thumbnails: CardThumbnails;
   popover: RelatedPopover;
   titleStrip: TitleStrip;
 
@@ -93,6 +95,8 @@ export default class TwohopLinksPlugin extends Plugin {
     this.showLinksInMarkdown = true;
     this.links = new Links(this.app, this.settings);
     this.previewStore = new PreviewStore(this.app);
+    this.thumbnails = new CardThumbnails(this.app);
+    setCardThumbnails(this.thumbnails);
     this.popover = new RelatedPopover(this);
     // Hover features are for a mouse or trackpad; touch screens emulate
     // mouseover on tap, which would open popups and the title row.
@@ -272,6 +276,8 @@ export default class TwohopLinksPlugin extends Plugin {
     this.links.cancelPendingCalculations();
     this.disableLinksInMarkdown();
     this.previewStore.dispose();
+    setCardThumbnails(null);
+    this.thumbnails.dispose();
     setCardHoverHandler(null);
     this.paneObserver?.disconnect();
     this.titleStrip.hide();
