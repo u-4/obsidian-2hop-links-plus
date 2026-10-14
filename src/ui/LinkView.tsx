@@ -81,7 +81,7 @@ export default class LinkView extends React.Component<
   componentWillUnmount(): void {
     this.abortController?.abort();
     this.observer?.disconnect();
-    this.releaseImage();
+    this.releaseImage(false);
   }
 
   /**
@@ -122,11 +122,11 @@ export default class LinkView extends React.Component<
     }
   }
 
-  private releaseImage(): void {
+  private releaseImage(updateState = true): void {
     if (!this.imageLease) return;
     this.imageLease.lease.release();
     this.imageLease = null;
-    if (this.state.thumbnailUrl !== null) {
+    if (updateState && this.state.thumbnailUrl !== null) {
       this.setState({ thumbnailUrl: null });
     }
   }
