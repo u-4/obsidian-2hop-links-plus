@@ -800,6 +800,36 @@ test("a newer tab cancels the superseded gather after shared I/O settles", async
   );
 });
 
+test("a gather gives the main thread back and stops at a checkpoint when cancelled", async () => {
+  const { app, files } = createSyntheticApp({ fileCount: 400, linksPerFile: 8 });
+  // Yield at every checkpoint so the test does not depend on the clock.
+  const cooperation = { yieldEvery: 40, maxSliceMs: 0 };
+  const links = new Links(app, createSettings(), cooperation);
+  let timerRan = false;
+  setTimeout(() => {
+    timerRan = true;
+  }, 0);
+  const result = await links.gatherTwoHopLinks(files[0]);
+  assert.ok(timerRan, "a timer queued before the gather runs before it finishes");
+  assert.ok(result.links.length > 0);
+
+  const reference = await new Links(app, createSettings()).gatherTwoHopLinks(files[0]);
+  assert.deepEqual(
+    result.twoHopLinks.map((group) => group.fileEntities.map((e) => e.targetPath)),
+    reference.twoHopLinks.map((group) => group.fileEntities.map((e) => e.targetPath)),
+    "yielding does not change the result"
+  );
+
+  const fresh = new Links(app, createSettings(), cooperation);
+  const pending = fresh.gatherTwoHopLinks(files[1]);
+  setTimeout(() => fresh.cancelActiveGather(), 0);
+  await assert.rejects(pending, (error) => error?.name === "AbortError");
+  assert.equal(fresh.getPerformanceStats().gatherCancellations, 1);
+  // The unfinished index build is carried on by the next gather.
+  await fresh.gatherTwoHopLinks(files[1]);
+  assert.equal(fresh.getPerformanceStats().builds, 1);
+});
+
 const signatureOptions = { frontmatterPropertyKeyAsTitle: "" };
 
 function metadataWithLinks(links, extra = {}) {

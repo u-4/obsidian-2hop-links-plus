@@ -1,6 +1,12 @@
 import type { App, CachedMetadata, TFile } from "obsidian";
 import { getFrontmatterLinks } from "./obsidianCompat";
 import { removeBlockReference } from "./utils";
+import {
+  CooperativeTask,
+  runSteps,
+  runStepsCooperatively,
+  Steps,
+} from "./performance";
 
 /**
  * Identifies a link target. Existing notes are keyed by path ("p:"), links to
@@ -113,6 +119,8 @@ export class LinkIndex {
   private readonly orderedKeys = new Map<string, LinkKey[]>();
   private readonly dirtyPaths = new Set<string>();
   private needsRebuild = true;
+  /** A rebuild in progress; whoever needs the index next carries it on. */
+  private build: Steps<void> | null = null;
   private readonly stats: LinkIndexStats = {
     builds: 0,
     patches: 0,
@@ -145,9 +153,32 @@ export class LinkIndex {
   }
 
   ensureFresh(): void {
-    if (this.needsRebuild) {
-      this.rebuild();
-      return;
+    runSteps(this.freshen());
+  }
+
+  /**
+   * Same as ensureFresh, but a full build gives the main thread back between
+   * slices and stops at a checkpoint when the task is cancelled. A build left
+   * unfinished is carried on by the next caller.
+   */
+  ensureFreshAsync(task: CooperativeTask): Promise<void> {
+    return runStepsCooperatively(this.freshen(), task);
+  }
+
+  private *freshen(): Steps<void> {
+    for (;;) {
+      if (this.needsRebuild) {
+        this.needsRebuild = false;
+        this.build = this.rebuildSteps();
+      }
+      const build = this.build;
+      if (!build) break;
+      const step = build.next();
+      if (step.done) {
+        if (this.build === build) this.build = null;
+        continue;
+      }
+      yield step.value;
     }
     if (this.dirtyPaths.size === 0) {
       return;
@@ -238,7 +269,7 @@ export class LinkIndex {
     return isNoteLinkText(linkText) ? unresolvedLinkKey(linkText) : null;
   }
 
-  private rebuild(): void {
+  private *rebuildSteps(): Steps<void> {
     const startedAt = Date.now();
     this.outKeys.clear();
     this.sources.clear();
@@ -246,7 +277,6 @@ export class LinkIndex {
     this.pathsByTag.clear();
     this.orderedKeys.clear();
     this.dirtyPaths.clear();
-    this.needsRebuild = false;
 
     const { resolvedLinks, unresolvedLinks } = this.app.metadataCache;
     const paths = new Set<string>([
@@ -254,13 +284,16 @@ export class LinkIndex {
       ...Object.keys(unresolvedLinks ?? {}),
     ]);
     for (const path of paths) {
-      this.setOutKeys(path, this.readOutKeys(path));
+      const keys = this.readOutKeys(path);
+      this.setOutKeys(path, keys);
+      yield 1 + keys.size;
     }
     for (const file of this.app.vault.getMarkdownFiles()) {
       this.setTags(
         file.path,
         expandTags(this.app.metadataCache.getFileCache(file))
       );
+      yield 1;
     }
     this.stats.builds++;
     this.stats.lastBuildMs = Math.max(0, Date.now() - startedAt);

@@ -14,6 +14,7 @@ import {
   Headword,
   PageInfo,
   RelatedPage,
+  relatedPageSteps,
 } from "./cosenseRelated";
 import {
   fileLinkKey,
@@ -23,11 +24,26 @@ import {
 } from "./linkIndex";
 import {
   CalculationCancelledError,
+  CooperativeTask,
   isCalculationCancelled,
   MAX_RESULT_CACHE_ENTRIES,
   RESULT_CACHE_TTL_MS,
+  runStepsCooperatively,
   throwIfCalculationCancelled,
 } from "./performance";
+
+/** How often a gather gives the main thread back. */
+export interface CooperationOptions {
+  /** Units of work between clock checks. */
+  yieldEvery?: number;
+  /** Longest slice of work before yielding, in milliseconds. */
+  maxSliceMs?: number;
+}
+
+const DEFAULT_COOPERATION: Required<CooperationOptions> = {
+  yieldEvery: 256,
+  maxSliceMs: 8,
+};
 
 export interface GatheredLinks {
   /** Pages the note links to, then pages linking to it (Cosense "Links"). */
@@ -125,10 +141,17 @@ export class Links {
   private canvasIndexHits = 0;
   private lastGatherMs = 0;
 
-  constructor(app: App, settings: TwohopPluginSettings) {
+  private readonly cooperation: Required<CooperationOptions>;
+
+  constructor(
+    app: App,
+    settings: TwohopPluginSettings,
+    cooperation: CooperationOptions = {}
+  ) {
     this.app = app;
     this.settings = settings;
     this.linkIndex = new LinkIndex(app);
+    this.cooperation = { ...DEFAULT_COOPERATION, ...cooperation };
   }
 
   /** Obsidian re-resolved this note's links. */
@@ -353,11 +376,20 @@ export class Links {
       return { links: [], newLinks: [], twoHopLinks: [], tagLinksList: [] };
     }
 
+    // Big hub notes and the first index build take a while; give the thread
+    // back between slices and stop at a checkpoint once superseded.
+    const task = new CooperativeTask(
+      signal,
+      this.cooperation.yieldEvery,
+      this.cooperation.maxSliceMs
+    );
     const isCanvas = activeFile.extension === "canvas";
     const canvasIndex =
       isCanvas || this.settings.showBackwardConnectedLinks
         ? await this.getCanvasLinkIndex()
         : undefined;
+    throwIfCalculationCancelled(signal);
+    await this.linkIndex.ensureFreshAsync(task);
     throwIfCalculationCancelled(signal);
 
     const headwords = isCanvas
@@ -375,24 +407,28 @@ export class Links {
       }
     }
 
-    const result = buildRelatedPages({
-      activePath: activeFile.path,
-      headwords,
-      linkTo: headwords
-        .map((headword) => headword.path)
-        .filter((path): path is string => path !== null),
-      linkFrom,
-      sourcesOf: (key) => this.linkIndex.sourcesOf(key),
-      orderedKeysOf: (path) => {
-        const file = this.getFile(path);
-        return file && file.extension === "md"
-          ? this.linkIndex.orderedKeysOf(file)
-          : [];
-      },
-      infoOf: (path) => this.getPageInfo(path),
-      isExcluded: (path) => shouldExcludePath(path, this.settings.excludePaths),
-      sortOrder: this.settings.sortOrder,
-    });
+    const result = await runStepsCooperatively(
+      relatedPageSteps({
+        activePath: activeFile.path,
+        headwords,
+        linkTo: headwords
+          .map((headword) => headword.path)
+          .filter((path): path is string => path !== null),
+        linkFrom,
+        sourcesOf: (key) => this.linkIndex.sourcesOf(key),
+        orderedKeysOf: (path) => {
+          const file = this.getFile(path);
+          return file && file.extension === "md"
+            ? this.linkIndex.orderedKeysOf(file)
+            : [];
+        },
+        infoOf: (path) => this.getPageInfo(path),
+        isExcluded: (path) =>
+          shouldExcludePath(path, this.settings.excludePaths),
+        sortOrder: this.settings.sortOrder,
+      }),
+      task
+    );
     throwIfCalculationCancelled(signal);
 
     const links = this.toLinkEntities(activeFile, headwords, result.links);
@@ -431,7 +467,7 @@ export class Links {
       for (const page of group.pages) shownPaths.add(page.path);
     }
     const tagLinksList = this.settings.showTagsLinks
-      ? this.getTagLinks(activeFile, shownPaths)
+      ? await this.getTagLinks(activeFile, shownPaths, task)
       : [];
 
     throwIfCalculationCancelled(signal);
@@ -598,10 +634,11 @@ export class Links {
     };
   }
 
-  private getTagLinks(
+  private async getTagLinks(
     activeFile: TFile,
-    shownPaths: Set<string>
-  ): PropertiesLinks[] {
+    shownPaths: Set<string>,
+    task: CooperativeTask
+  ): Promise<PropertiesLinks[]> {
     const activeTags = this.linkIndex
       .tagsOf(activeFile.path)
       .filter((tag) => !isExcludedTag(tag, this.settings.excludeTags));
@@ -616,7 +653,9 @@ export class Links {
     const lists: PropertiesLinks[] = [];
     for (const tag of activeTags) {
       const pages: RelatedPage[] = [];
-      for (const path of this.linkIndex.pathsWithTag(tag)) {
+      for (const path of Array.from(this.linkIndex.pathsWithTag(tag))) {
+        const pause = task.checkpoint();
+        if (pause) await pause;
         if (path === activeFile.path) continue;
         if (shouldExcludePath(path, this.settings.excludePaths)) continue;
         if (this.settings.enableDuplicateRemoval && shownPaths.has(path)) {
