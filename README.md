@@ -40,8 +40,9 @@ Cosense / Scrapbox に近づけるため、Cosense と同じ関連ページの�
 `2hop-links-plus` を引き継ぐため、元の 2Hop Links Plus と同時にはインストールできず、
 置き換えとして動作します。導入前に既存プラグインフォルダをバックアップしてください。
 
-最新の公開版は `0.49.5` です。画面外の関連カードは画像要素を外し、戻ったときに再表示します。
-画像枠と抜粋はそのまま保ちます。タイトルバーのボタンが行き先を矢印で示すエレベーター風の丸いボタンになり、
+最新の公開版は `0.50.0` です。カードの画像はカードの大きさの縮小画像で表示し、
+ノートの作成・削除・名前の変更や同期で届いたノートでは、リンク表と計算結果を作り直さなくなりました。
+大きなノートの計算は途中で画面に処理を返し、本文検索の控えは端末内に残ります。タイトルバーのボタンが行き先を矢印で示すエレベーター風の丸いボタンになり、
 別パネル表示のときは押すと 2-hop リンクのパネルを出し入れします。
 
 設定の `Tab switch calculation delay (ms)` は通常のタブ切替後の待ち時間です
@@ -118,9 +119,11 @@ This is not an official release of the upstream project. It intentionally keeps
 the `2hop-links-plus` plugin ID, so it replaces the upstream plugin rather than
 installing alongside it. Back up your existing plugin directory before trying it.
 
-The latest release is `0.49.5`. Offscreen related cards remove their image elements
-and restore them when nearby again, preserving the image frame and excerpt.
-The title-bar button is a round,
+The latest release is `0.50.0`. Card images are shown as card-sized
+thumbnails; creating, deleting or renaming notes, and notes arriving by sync,
+no longer rebuild the link index or empty the result cache; big gathers give
+the main thread back; and the body-search cache stays on the device between
+sessions. The title-bar button is a round,
 elevator-style button whose arrow shows where it goes, and in side-pane mode it
 brings the 2-hop pane forward or puts the previous tab back.
 
