@@ -20,6 +20,7 @@ export class SeparatePaneView extends ItemView {
   private refreshTask: DebouncedTask;
   private isClosed = false;
   private isViewLayoutReady = false;
+  private isClickListenerRegistered = false;
   links: Links;
 
   constructor(leaf: WorkspaceLeaf, plugin: TwohopLinksPlugin, links: Links) {
@@ -52,6 +53,7 @@ export class SeparatePaneView extends ItemView {
       this.lastActiveLeaf = this.app.workspace.getLeaf();
       this.lastMainFile = this.app.workspace.getActiveFile();
       this.registerActiveFileUpdateEvent();
+      this.registerLinkClickListener();
 
       this.registerEvent(
         this.app.metadataCache.on("resolved", () => {
@@ -159,8 +161,6 @@ export class SeparatePaneView extends ItemView {
           activeFile,
           sortOrder
         );
-
-        this.addLinkEventListeners();
 
         this.previousLinks = currentLinks;
         this.previousTags = currentTags;
@@ -304,32 +304,46 @@ export class SeparatePaneView extends ItemView {
     return tags;
   }
 
-  addLinkEventListeners(): void {
-    const links = this.containerEl.querySelectorAll("a");
-    links.forEach((link) => {
-      link.addEventListener("click", async (event) => {
-        event.preventDefault();
-
-        const filePath = link.getAttribute("href");
-        if (!filePath) {
-          console.error("Link does not have href attribute", link);
-          return;
-        }
-
-        const fileOrFolder = this.app.vault.getAbstractFileByPath(filePath);
-        if (!fileOrFolder || !(fileOrFolder instanceof TFile)) {
-          console.error("No file found for path", filePath);
-          return;
-        }
-        const file = fileOrFolder as TFile;
-
-        if (!this.lastActiveLeaf) {
-          console.error("No last active leaf");
-          return;
-        }
-
-        await this.lastActiveLeaf.openFile(file);
-      });
+  /**
+   * One delegated listener for links in the pane, registered once, instead
+   * of a listener per link added again on every update.
+   */
+  private registerLinkClickListener(): void {
+    if (this.isClickListenerRegistered) {
+      return;
+    }
+    this.isClickListenerRegistered = true;
+    this.registerDomEvent(this.containerEl, "click", (event) => {
+      // Duck-typed: instanceof fails for elements of popout windows.
+      const target = event.target as Element | null;
+      const link =
+        typeof target?.closest === "function" ? target.closest("a") : null;
+      if (!link || !this.containerEl.contains(link)) {
+        return;
+      }
+      event.preventDefault();
+      void this.openLink(link);
     });
+  }
+
+  private async openLink(link: HTMLAnchorElement): Promise<void> {
+    const filePath = link.getAttribute("href");
+    if (!filePath) {
+      console.error("Link does not have href attribute", link);
+      return;
+    }
+
+    const fileOrFolder = this.app.vault.getAbstractFileByPath(filePath);
+    if (!fileOrFolder || !(fileOrFolder instanceof TFile)) {
+      console.error("No file found for path", filePath);
+      return;
+    }
+
+    if (!this.lastActiveLeaf) {
+      console.error("No last active leaf");
+      return;
+    }
+
+    await this.lastActiveLeaf.openFile(fileOrFolder);
   }
 }

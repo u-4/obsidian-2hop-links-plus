@@ -35,6 +35,7 @@ import {
 } from "../src/scrollNavigation.ts";
 import { getNextLoadedState } from "../src/ui/twohopLinksLoadState.ts";
 import LinkView from "../src/ui/LinkView.tsx";
+import { SeparatePaneView } from "../src/ui/SeparatePaneView.tsx";
 import { renderToStaticMarkup } from "react-dom/server";
 import {
   getNextSearchDisclosureState,
@@ -1355,6 +1356,59 @@ test("a preview finishing after unmount does not restore the card image", async 
   await flushCardRead();
   assert.equal(card.markup(), atUnmount);
   assert.equal(card.disconnected(), true);
+});
+
+test("the side pane listens for link clicks once, however often it updates", async () => {
+  const note = new TFile("Note.md");
+  const target = new TFile("Target.md");
+  const opened = [];
+  const listeners = [];
+  const containerEl = {
+    addClass() {},
+    addEventListener: (type, callback) => listeners.push({ type, callback }),
+    contains: () => true,
+  };
+  const app = {
+    workspace: {
+      getLeaf: () => ({ openFile: async (file) => opened.push(file.path) }),
+      getActiveFile: () => note,
+      on: () => ({}),
+      activeLeaf: null,
+    },
+    metadataCache: { on: () => ({}), getFileCache: () => null },
+    vault: {
+      on: () => ({}),
+      getAbstractFileByPath: (path) => (path === target.path ? target : null),
+    },
+  };
+  const plugin = {
+    whenWorkspaceLayoutReady() {},
+    prepareLinksForFile: () => "related",
+    injectTwohopLinks() {},
+  };
+  const links = {
+    cancelActiveGather() {},
+    gatherTwoHopLinks: async () => ({ links: [], newLinks: [], twoHopLinks: [], tagLinksList: [] }),
+  };
+  const view = new SeparatePaneView({ app, containerEl }, plugin, links);
+  await view.onOpen();
+  await view.updateOrForceUpdate(true);
+  await view.updateOrForceUpdate(true);
+  await view.updateOrForceUpdate(true);
+  const clicks = listeners.filter((listener) => listener.type === "click");
+  assert.equal(clicks.length, 1);
+
+  let prevented = false;
+  const anchor = { getAttribute: () => "Target.md" };
+  clicks[0].callback({
+    target: { closest: () => anchor },
+    preventDefault: () => {
+      prevented = true;
+    },
+  });
+  await flushCardRead();
+  assert.equal(prevented, true);
+  assert.deepEqual(opened, ["Target.md"]);
 });
 
 test("a card's popup opens off a free corner and barely covers its neighbours", () => {
