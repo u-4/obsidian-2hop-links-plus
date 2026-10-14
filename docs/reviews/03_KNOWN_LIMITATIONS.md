@@ -13,8 +13,14 @@
 - Invalid Canvas JSON or a non-array `nodes` value is ignored and logged to the
   developer console. Individual malformed nodes are silently skipped. Neither
   case stops the plugin.
-- The optional body-search cache is bounded and in memory. It is rebuilt after
-  the plugin process unloads rather than persisted between Obsidian sessions.
+- The optional body-search cache is bounded in memory and, since 0.50.0, is
+  also kept per device in IndexedDB (`2hop-links-plus-body-search`), keyed by
+  vault and note path. A stored text is used only while the note's mtime and
+  size still match; the store keeps at most 2,000 texts and 10 million
+  characters across vaults, dropping the least recently used. It is not synced
+  and not written to `data.json`. Where IndexedDB is unavailable or fails, the
+  cache quietly stays in memory only and is rebuilt after the plugin unloads.
+  Stored texts of deleted or renamed notes stay until they are pruned.
 - The scroll control lives in Obsidian's Markdown note view header and is hidden
   when the user disables view headers.
 - Inline injection waits for a newly mounted Markdown host for at most 120
