@@ -202,7 +202,10 @@ export class LinkIndex {
     const keys = new Set(cache ? this.resolveReferences(cache, path) : []);
     keys.delete(fileLinkKey(path));
     if (!sameMembers(keys, this.peekOutKeys(path))) return true;
-    return !sameMembers(new Set(expandTags(cache)), new Set(this.peekTags(path)));
+    return !sameMembers(
+      new Set(expandTags(cache)),
+      new Set(this.peekTags(path))
+    );
   }
 
   getStats(): LinkIndexStats {
